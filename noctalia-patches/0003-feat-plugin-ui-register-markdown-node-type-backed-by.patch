@@ -1,7 +1,7 @@
 From c4cc32961efb9507abd1a0440239e4a504f47ed0 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Tue, 7 Jul 2026 23:54:53 -0400
-Subject: [PATCH 3/3] feat(plugin-ui): register markdown node type backed by
+Subject: [PATCH 3/4] feat(plugin-ui): register markdown node type backed by
  MarkdownView
 
 Exposes the existing md4c MarkdownView control to plugin UI trees as
