@@ -42,6 +42,8 @@ local overrideModel = ""
 local overrideEffort = ""
 local queuedPrompt = nil
 local queuedKey = nil
+local view = "chat"
+local renamingChatId = nil
 
 -- Bumped whenever the composer needs to be cleared: ui.input is uncontrolled,
 -- so the only way to reset its buffer is to recreate it under a new key.
@@ -87,16 +89,15 @@ local function workspaceDir()
   return statePath() .. "/workspace"
 end
 
-local function persistSessionId(uuid)
-  local dir = statePath()
-  local ok, err = noctalia.mkdirAll(dir)
-  if not ok then
-    noctalia.log("Claude launcher: failed to create state dir: " .. tostring(err))
-    return
-  end
-  ok, err = noctalia.writeFile(dir .. "/last-session", tostring(uuid))
-  if not ok then
-    noctalia.log("Claude launcher: failed to persist session id: " .. tostring(err))
+local function indexPath()
+  return statePath() .. "/index.json"
+end
+
+local function removeLastSessionFile()
+  if type(noctalia.removeFile) == "function" then
+    noctalia.removeFile(statePath() .. "/last-session")
+  else
+    noctalia.writeFile(statePath() .. "/last-session", "")
   end
 end
 
@@ -112,15 +113,128 @@ local function loadPersistedSessionId()
   return uuid
 end
 
-local function clearPersistedSessionId()
-  if type(noctalia.removeFile) == "function" then
-    noctalia.removeFile(statePath() .. "/last-session")
-  else
-    noctalia.writeFile(statePath() .. "/last-session", "")
+local function normalizeIndex(value)
+  local index = { version = 1, chats = {} }
+  if type(value) ~= "table" or type(value.chats) ~= "table" then
+    return index
+  end
+  for _, chat in ipairs(value.chats) do
+    if type(chat) == "table" and type(chat.id) == "string" and chat.id ~= "" then
+      table.insert(index.chats, {
+        id = chat.id,
+        title = type(chat.title) == "string" and chat.title or "Untitled chat",
+        createdAt = type(chat.createdAt) == "number" and chat.createdAt or os.time(),
+        updatedAt = type(chat.updatedAt) == "number" and chat.updatedAt or os.time(),
+      })
+    end
+  end
+  table.sort(index.chats, function(a, b)
+    return a.updatedAt > b.updatedAt
+  end)
+  while #index.chats > 100 do
+    table.remove(index.chats)
+  end
+  return index
+end
+
+local function loadIndex()
+  local text = noctalia.readFile(indexPath())
+  if type(text) ~= "string" or text == "" then
+    return { version = 1, chats = {} }
+  end
+  local decoded, err = noctalia.json.decode(text)
+  if type(decoded) ~= "table" then
+    noctalia.log("Claude launcher: failed to decode history index: " .. tostring(err))
+    return { version = 1, chats = {} }
+  end
+  return normalizeIndex(decoded)
+end
+
+local function saveIndex(index)
+  local dir = statePath()
+  local ok, err = noctalia.mkdirAll(dir)
+  if not ok then
+    noctalia.log("Claude launcher: failed to create state dir: " .. tostring(err))
+    return false
+  end
+  local encoded
+  encoded, err = noctalia.json.encode(index, true)
+  if type(encoded) ~= "string" then
+    noctalia.log("Claude launcher: failed to encode history index: " .. tostring(err))
+    return false
+  end
+  ok, err = noctalia.writeFile(indexPath(), encoded)
+  if not ok then
+    noctalia.log("Claude launcher: failed to write history index: " .. tostring(err))
+    return false
+  end
+  return true
+end
+
+local historyIndex = loadIndex()
+
+local previousSessionId = loadPersistedSessionId()
+if #historyIndex.chats == 0 and previousSessionId ~= nil then
+  local now = os.time()
+  table.insert(historyIndex.chats, {
+    id = previousSessionId,
+    title = "Previous chat",
+    createdAt = now,
+    updatedAt = now,
+  })
+  if saveIndex(historyIndex) then
+    removeLastSessionFile()
   end
 end
 
-local persistedId = loadPersistedSessionId()
+local function sortHistoryIndex()
+  table.sort(historyIndex.chats, function(a, b)
+    return a.updatedAt > b.updatedAt
+  end)
+  while #historyIndex.chats > 100 do
+    table.remove(historyIndex.chats)
+  end
+end
+
+local function upsertChat(id, title)
+  local now = os.time()
+  for _, chat in ipairs(historyIndex.chats) do
+    if chat.id == id then
+      chat.updatedAt = now
+      sortHistoryIndex()
+      saveIndex(historyIndex)
+      return
+    end
+  end
+  table.insert(historyIndex.chats, 1, {
+    id = id,
+    title = title,
+    createdAt = now,
+    updatedAt = now,
+  })
+  sortHistoryIndex()
+  saveIndex(historyIndex)
+end
+
+local function renameChat(id, title)
+  for _, chat in ipairs(historyIndex.chats) do
+    if chat.id == id then
+      chat.title = title
+      saveIndex(historyIndex)
+      return
+    end
+  end
+end
+
+local function deleteChat(id)
+  for i, chat in ipairs(historyIndex.chats) do
+    if chat.id == id then
+      table.remove(historyIndex.chats, i)
+      saveIndex(historyIndex)
+      return
+    end
+  end
+end
 
 local function pushDiag(line)
   table.insert(diagBuffer, line)
@@ -223,6 +337,15 @@ local function removeMessageByKey(key)
   if index ~= nil then
     table.remove(messages, index)
   end
+end
+
+local function titleFromFirstUserMessage()
+  for _, message in ipairs(messages) do
+    if message.role == "user" and message.text ~= "" then
+      return string.sub(noctalia.string.trim(message.text), 1, 60)
+    end
+  end
+  return "Untitled chat"
 end
 
 local function isLastMessage(message)
@@ -453,26 +576,119 @@ local function messageList()
   return ui.scroll({ flexGrow = 1, gap = 8 }, rows)
 end
 
+local function openChatCallback(chat)
+  local name = "onOpenChat_" .. chat.id:gsub("%W", "_")
+  env[name] = function()
+    if streaming then
+      return
+    end
+    sessionId = chat.id
+    hasSession = true
+    currentUuid = chat.id
+    messages = {}
+    msgCounter = 0
+    openMessage = nil
+    queuedPrompt = nil
+    queuedKey = nil
+    overrideModel = ""
+    overrideEffort = ""
+    diagBuffer = {}
+    view = "chat"
+    renamingChatId = nil
+    -- Phase P8: reload the saved transcript for this chat here.
+    render()
+  end
+  return name
+end
+
+local function renameChatCallback(chat)
+  local name = "onRenameChat_" .. chat.id:gsub("%W", "_")
+  env[name] = function()
+    if streaming then
+      return
+    end
+    renamingChatId = chat.id
+    render()
+  end
+  return name
+end
+
+local function terminalChatCallback(chat)
+  local name = "onTerminalChat_" .. chat.id:gsub("%W", "_")
+  env[name] = function()
+    if streaming then
+      return
+    end
+    local cmd = "cd " .. shellQuote(workspaceDir()) .. " && " .. claudeCommand() .. " --resume " .. shellQuote(chat.id)
+    if not noctalia.runInTerminal(cmd) then
+      noctalia.notifyError("Claude launcher", "could not open a terminal")
+    end
+  end
+  return name
+end
+
+local function deleteChatCallback(chat)
+  local name = "onDeleteChat_" .. chat.id:gsub("%W", "_")
+  env[name] = function()
+    if streaming then
+      return
+    end
+    deleteChat(chat.id)
+    render()
+  end
+  return name
+end
+
+local function historyList()
+  if #historyIndex.chats == 0 then
+    return ui.scroll({ flexGrow = 1, gap = 6 }, {
+      ui.row({ key = "history-empty", flexGrow = 1, justify = "center", align = "center" }, {
+        ui.label({ text = "No chats yet", color = "on_surface_variant/0.7", fontSize = 13 }),
+      }),
+    })
+  end
+
+  local rows = {}
+  for _, chat in ipairs(historyIndex.chats) do
+    local titleControl
+    if renamingChatId == chat.id then
+      titleControl = ui.input({
+        key = "rename-" .. chat.id,
+        value = chat.title,
+        focus = true,
+        flexGrow = 1,
+        onSubmit = "onRenameSubmit",
+      })
+    else
+      titleControl = ui.button({
+        text = chat.title,
+        variant = "ghost",
+        flexGrow = 1,
+        onClick = openChatCallback(chat),
+      })
+    end
+    table.insert(rows, ui.row({ key = "chat-" .. chat.id, align = "center", gap = 6 }, {
+      titleControl,
+      ui.label({
+        text = noctalia.formatTime("%b %d %H:%M", chat.updatedAt),
+        color = "on_surface_variant",
+        fontSize = 11,
+      }),
+      ui.button({ text = "rename", variant = "ghost", onClick = renameChatCallback(chat) }),
+      ui.button({ text = "terminal", variant = "ghost", onClick = terminalChatCallback(chat) }),
+      ui.button({ text = "delete", variant = "ghost", onClick = deleteChatCallback(chat) }),
+    }))
+  end
+  return ui.scroll({ flexGrow = 1, gap = 6 }, rows)
+end
+
 local function header()
   return ui.row({ align = "center", gap = 8 }, {
     ui.label({ text = "Claude", fontSize = 16, fontWeight = "semibold", color = "on_surface" }),
     ui.spacer({ flexGrow = 1 }),
+    ui.button({ text = view == "chat" and "History" or "Back", variant = "ghost", onClick = "onToggleHistory" }),
     ui.button({ text = "copy chat", variant = "ghost", onClick = "onCopyChat" }),
     ui.button({ text = "New chat", glyph = "plus", variant = "ghost", onClick = "onNewChat" }),
-  })
-end
-
-local function resumeAffordance()
-  if #messages ~= 0 or streaming or persistedId == nil or sessionId ~= nil then
-    return nil
-  end
-  return ui.row({ align = "center", gap = 8 }, {
-    ui.button({ text = "Resume last chat", variant = "ghost", onClick = "onResumeLast" }),
-    ui.label({
-      text = "continues your previous conversation",
-      color = "on_surface_variant",
-      fontSize = 11,
-    }),
   })
 end
 
@@ -530,13 +746,13 @@ render = function()
   local children = {
     header(),
   }
-  local resumeRow = resumeAffordance()
-  if resumeRow ~= nil then
-    table.insert(children, resumeRow)
+  if view == "history" then
+    table.insert(children, historyList())
+  else
+    table.insert(children, messageList())
+    table.insert(children, switchers())
+    table.insert(children, composer())
   end
-  table.insert(children, messageList())
-  table.insert(children, switchers())
-  table.insert(children, composer())
   panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 10, align = "stretch" }, children))
 end
 
@@ -668,7 +884,7 @@ local function handleLine(streamId, line, wasResume)
           if wasResume then
             sessionId = nil
             hasSession = false
-            clearPersistedSessionId()
+            deleteChat(currentUuid)
             if msg.text ~= "" then
               msg.text ..= "\n"
             end
@@ -680,7 +896,7 @@ local function handleLine(streamId, line, wasResume)
             msg.text = resultText
           end
           hasSession = true
-          persistSessionId(currentUuid)
+          upsertChat(currentUuid, titleFromFirstUserMessage())
           shouldDispatchQueued = true
         end
       end
@@ -858,24 +1074,49 @@ function onCopyChat()
   noctalia.copyToClipboard(table.concat(parts, "\n\n"), "text/plain")
 end
 
-function onResumeLast()
-  sessionId = persistedId
-  hasSession = true
+function onToggleHistory()
+  if streaming then
+    return
+  end
+  if view == "chat" then
+    view = "history"
+  else
+    view = "chat"
+    renamingChatId = nil
+  end
+  render()
+end
+
+function onRenameSubmit(text)
+  if streaming then
+    return
+  end
+  if renamingChatId ~= nil then
+    local title = noctalia.string.trim(text or "")
+    if title ~= "" then
+      renameChat(renamingChatId, title)
+    end
+  end
+  renamingChatId = nil
   render()
 end
 
 function onNewChat()
+  if streaming then
+    return
+  end
   messages = {}
   msgCounter = 0
   sessionId = nil
   hasSession = false
   currentUuid = nil
-  persistedId = nil
   diagBuffer = {}
   streaming = false
   openMessage = nil
   queuedPrompt = nil
   queuedKey = nil
+  view = "chat"
+  renamingChatId = nil
   overrideModel = ""
   overrideEffort = ""
   activeStreamId += 1
@@ -923,7 +1164,7 @@ function update()
         if lastSendWasResume then
           sessionId = nil
           hasSession = false
-          clearPersistedSessionId()
+          deleteChat(currentUuid)
           message.text ..= "\nSession could not be resumed - starting a new chat on next send."
         end
       end
