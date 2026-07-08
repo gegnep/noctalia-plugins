@@ -451,6 +451,11 @@ local function visibleMessages()
   return visible, true
 end
 
+-- Forward declaration: callback factories below close over render, so the
+-- local must exist BEFORE they are defined — a closure created earlier would
+-- silently bind the (nil) global instead and blow up when invoked.
+local render
+
 local function thinkingToggleCallback(message)
   local name = "onToggleThinking_" .. message.key:gsub("%W", "_")
   env[name] = function()
@@ -541,8 +546,7 @@ local function estimateComposerLines(value)
 end
 
 -- ── UI ────────────────────────────────────────────────────────────────────
-
-local render
+-- (render is forward-declared above the callback factories in HELPERS)
 
 local function messageRow(message)
   local isUser = message.role == "user"

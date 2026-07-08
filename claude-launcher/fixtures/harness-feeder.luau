@@ -29,6 +29,16 @@ local before = msg.text
 CAPTURED_ONLINE('{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"STALE"}}}')
 assert(msg.text == before, "stale-stream guard failed")
 
+-- Regression: per-message callback factories must bind the render local (a
+-- factory defined before the forward declaration binds a nil global instead
+-- and blows up on click — the thinking-toggle bug).
+msg.thinking = "some thinking"
+local toggleName = thinkingToggleCallback(msg)
+local toggleFn = getfenv()[toggleName]
+assert(type(toggleFn) == "function", "thinking toggle callback not registered")
+toggleFn()
+assert(msg.thinkingOpen == true, "thinking toggle did not flip (or render errored)")
+
 print("DRY-RUN OK  messages=" .. #messages
   .. "  text=" .. string.format("%q", msg.text)
   .. "  logs=" .. #HARNESS_LOGS)
