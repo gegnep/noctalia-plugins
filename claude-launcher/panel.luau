@@ -663,7 +663,12 @@ local function messageList()
   for _, message in ipairs(visible) do
     table.insert(rows, messageRow(message))
   end
+  -- Stable keys on the top-level regions: the reconciler reuses detached
+  -- nodes by (type, key), and an unkeyed region column can otherwise be
+  -- recycled into a different region with stale props (e.g. the empty-state
+  -- column's flexGrow leaking onto the composer after a new chat).
   return ui.scroll({
+    key = "message-scroll",
     flexGrow = 1,
     gap = 8,
     stickToBottom = true,
@@ -776,7 +781,7 @@ end
 
 local function historyList()
   if #historyIndex.chats == 0 then
-    return ui.scroll({ flexGrow = 1, gap = 6 }, {
+    return ui.scroll({ key = "history-scroll", flexGrow = 1, gap = 6 }, {
       ui.column({ key = "history-empty", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
         ui.glyph({ name = "history", size = 48, color = "on_surface_variant" }),
         ui.label({ text = "No chats yet", color = "on_surface_variant", fontSize = 12 }),
@@ -824,7 +829,7 @@ local function historyList()
 
     table.insert(rows, ui.row({ key = "chat-" .. chat.id, align = "center", gap = 6 }, row))
   end
-  return ui.scroll({ flexGrow = 1, gap = 6 }, rows)
+  return ui.scroll({ key = "history-scroll", flexGrow = 1, gap = 6 }, rows)
 end
 
 local function header()
@@ -871,7 +876,7 @@ local function composer()
     sendButton = ui.button({ glyph = "send", variant = "primary", onClick = "onSendClick" })
   end
 
-  return ui.column({ gap = 4, align = "stretch" }, {
+  return ui.column({ key = "composer", gap = 4, align = "stretch" }, {
     ui.row({ gap = 8, align = "center" }, {
       ui.input({
         key = "composer-" .. inputRev,
@@ -923,7 +928,7 @@ end
 -- model/effort switchers live here instead of a permanent chrome row once a
 -- chat has messages (the header caption reports their values then).
 local function emptyState()
-  return ui.column({ flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
+  return ui.column({ key = "empty-state", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
     ui.glyph({ name = "sparkles", size = 48, color = "on_surface_variant" }),
     ui.label({ text = "Ask Claude anything", color = "on_surface_variant", fontSize = 12 }),
     switchers(),
@@ -943,7 +948,7 @@ render = function()
       table.insert(children, messageList())
     end
     if not atBottom and view == "chat" and #messages > 0 then
-      table.insert(children, ui.row({ justify = "center" }, {
+      table.insert(children, ui.row({ key = "jump-pill", justify = "center" }, {
         ui.button({ glyph = "chevron-down", variant = "ghost", onClick = "onJumpToLatest" }),
       }))
     end
