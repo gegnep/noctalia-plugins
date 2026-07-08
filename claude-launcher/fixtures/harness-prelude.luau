@@ -153,7 +153,7 @@ end
 ui = {}
 for _, name in ipairs({
   "column", "row", "box", "label", "glyph", "image", "separator", "spacer",
-  "progress", "button", "graph", "input", "select", "slider", "toggle", "scroll",
+  "progress", "button", "graph", "input", "select", "slider", "toggle", "scroll", "markdown",
 }) do
   ui[name] = uiCtor(name)
 end

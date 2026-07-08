@@ -43,6 +43,8 @@ local overrideEffort = ""
 local queuedPrompt = nil
 local queuedKey = nil
 local view = "chat"
+local atBottom = true
+local jumpRev = 0
 local renamingChatId = nil
 local pendingDeleteChatId = nil
 
@@ -587,7 +589,14 @@ local function messageRow(message)
       maxWidth = 280,
     }))
   end
-  table.insert(content, ui.label({ text = message.text, color = textColor, fontSize = 13, maxWidth = 280 }))
+  if not isUser
+    and message.text ~= ""
+    and (message.status == "done" or message.status == "streaming" or message.status == "thinking")
+    and not message.queued then
+    table.insert(content, ui.markdown({ text = message.text, width = 280 }))
+  else
+    table.insert(content, ui.label({ text = message.text, color = textColor, fontSize = 13, maxWidth = 280 }))
+  end
   -- Per-message actions (copy / retry) only apply once the message has
   -- settled - not while it's actively streaming.
   if message.text ~= ""
@@ -638,19 +647,11 @@ local function messageRow(message)
   }, { bubble })
 end
 
--- TEMPORARY WORKAROUND: ui.scroll exposes no programmatic scroll-to-bottom
--- (or scroll-to-top) prop for plugins, so a normal oldest-first list leaves
--- new messages below the fold in a long chat. Render newest-first instead so
--- fresh content lands directly under the header, and move the "earlier
--- messages hidden" notice to the bottom (it now represents the oldest end of
--- the visible window). Revert to oldest-first once noctalia adds a scroll
--- control the plugin can drive.
+-- ui.scroll now owns follow-bottom behavior; render messages in chronological
+-- order and let the host keep the latest content visible while appropriate.
 local function messageList()
   local visible, hasHidden = visibleMessages()
   local rows = {}
-  for i = #visible, 1, -1 do
-    table.insert(rows, messageRow(visible[i]))
-  end
   if hasHidden then
     table.insert(rows, ui.label({
       key = "hidden-notice",
@@ -659,7 +660,16 @@ local function messageList()
       fontSize = 11,
     }))
   end
-  return ui.scroll({ flexGrow = 1, gap = 8 }, rows)
+  for _, message in ipairs(visible) do
+    table.insert(rows, messageRow(message))
+  end
+  return ui.scroll({
+    flexGrow = 1,
+    gap = 8,
+    stickToBottom = true,
+    onScroll = "onMessagesScrolled",
+    scrollToBottomRev = jumpRev,
+  }, rows)
 end
 
 local function openChatCallback(chat)
@@ -680,6 +690,7 @@ local function openChatCallback(chat)
     overrideEffort = ""
     diagBuffer = {}
     view = "chat"
+    atBottom = true
     renamingChatId = nil
     pendingDeleteChatId = nil
     local ok, err = pcall(function()
@@ -860,18 +871,26 @@ local function composer()
     sendButton = ui.button({ glyph = "send", variant = "primary", onClick = "onSendClick" })
   end
 
-  return ui.row({ gap = 8, align = "center" }, {
-    ui.input({
-      key = "composer-" .. inputRev,
-      placeholder = "Ask Claude\226\128\166 (Ctrl+Enter to send)",
-      flexGrow = 1,
-      multiline = true,
-      height = COMPOSER_BASE_HEIGHT + (composerLines - 1) * COMPOSER_LINE_HEIGHT,
-      enabled = true,
-      onChange = "onComposerChanged",
-      onSubmit = "onSubmit",
+  return ui.column({ gap = 4, align = "stretch" }, {
+    ui.row({ gap = 8, align = "center" }, {
+      ui.input({
+        key = "composer-" .. inputRev,
+        placeholder = "Ask Claude\226\128\166",
+        flexGrow = 1,
+        multiline = true,
+        submitOnEnter = true,
+        height = COMPOSER_BASE_HEIGHT + (composerLines - 1) * COMPOSER_LINE_HEIGHT,
+        enabled = true,
+        onChange = "onComposerChanged",
+        onSubmit = "onSubmit",
+      }),
+      sendButton,
     }),
-    sendButton,
+    ui.label({
+      text = "Enter to send \194\183 Shift+Enter for a new line",
+      color = "on_surface_variant",
+      fontSize = 11,
+    }),
   })
 end
 
@@ -922,6 +941,11 @@ render = function()
       table.insert(children, emptyState())
     else
       table.insert(children, messageList())
+    end
+    if not atBottom and view == "chat" and #messages > 0 then
+      table.insert(children, ui.row({ justify = "center" }, {
+        ui.button({ glyph = "chevron-down", variant = "ghost", onClick = "onJumpToLatest" }),
+      }))
     end
     table.insert(children, composer())
   end
@@ -1183,6 +1207,22 @@ function onSendClick()
   doSubmit(composerBuffer)
 end
 
+function onMessagesScrolled(offset, maxOffset)
+  local off = tonumber(offset) or 0
+  local max = tonumber(maxOffset) or 0
+  local nowAtBottom = (max - off) <= 1
+  if nowAtBottom ~= atBottom then
+    atBottom = nowAtBottom
+    render()
+  end
+end
+
+function onJumpToLatest()
+  jumpRev += 1
+  atBottom = true
+  render()
+end
+
 function onModelChanged(_index, text)
   if text == "default" then
     overrideModel = ""
@@ -1303,6 +1343,7 @@ function onNewChat()
   queuedPrompt = nil
   queuedKey = nil
   view = "chat"
+  atBottom = true
   renamingChatId = nil
   overrideModel = ""
   overrideEffort = ""
