@@ -37,6 +37,11 @@ local watchdogInFlight = false
 local seenUnknownTypes = {}
 local messageStartSeen = false
 local lastSendWasResume = false
+local openMessage = nil
+local overrideModel = ""
+local overrideEffort = ""
+local queuedPrompt = nil
+local queuedKey = nil
 
 -- Bumped whenever the composer needs to be cleared: ui.input is uncontrolled,
 -- so the only way to reset its buffer is to recreate it under a new key.
@@ -156,12 +161,18 @@ local function buildCommand(prompt, uuid, resume)
     cmd ..= " --session-id " .. tostring(uuid)
   end
 
-  local model = noctalia.getConfig("model")
+  local model = overrideModel
+  if model == "" then
+    model = noctalia.getConfig("model")
+  end
   if type(model) == "string" and model ~= "" then
     cmd ..= " --model " .. shellQuote(model)
   end
 
-  local effort = noctalia.getConfig("effort")
+  local effort = overrideEffort
+  if effort == "" then
+    effort = noctalia.getConfig("effort")
+  end
   if type(effort) == "string" and effort ~= "" then
     cmd ..= " --effort " .. shellQuote(effort)
   end
@@ -186,6 +197,36 @@ local function appendMessage(role, text, status)
   }
   table.insert(messages, message)
   return message
+end
+
+local function sessionPolicy()
+  if sessionId ~= nil and hasSession then
+    return sessionId, true
+  end
+  local uuid = newUuid()
+  sessionId = uuid
+  hasSession = false
+  return uuid, false
+end
+
+local function findMessageByKey(key)
+  for i, message in ipairs(messages) do
+    if message.key == key then
+      return message, i
+    end
+  end
+  return nil, nil
+end
+
+local function removeMessageByKey(key)
+  local _, index = findMessageByKey(key)
+  if index ~= nil then
+    table.remove(messages, index)
+  end
+end
+
+local function isLastMessage(message)
+  return #messages > 0 and messages[#messages] == message
 end
 
 -- Caps the rendered list at the most recent MAX_VISIBLE_MESSAGES entries.
@@ -216,6 +257,52 @@ local function copyCallback(message)
     noctalia.copyToClipboard(message.text, "text/plain")
   end
   return name
+end
+
+local startStream
+
+local function retryCallback(message)
+  local name = "onRetry_" .. message.key:gsub("%W", "_")
+  env[name] = function()
+    if streaming or not isLastMessage(message) then
+      return
+    end
+    local previous = messages[#messages - 1]
+    if previous == nil or previous.role ~= "user" then
+      return
+    end
+    table.remove(messages, #messages)
+    local uuid, resume = sessionPolicy()
+    startStream(previous.text, { uuid = uuid, resume = resume, appendUserRow = false })
+  end
+  return name
+end
+
+local function validStringList(value, fallback)
+  if type(value) ~= "table" then
+    return fallback
+  end
+  local result = {}
+  for _, item in ipairs(value) do
+    if type(item) == "string" and item ~= "" then
+      table.insert(result, item)
+    end
+  end
+  if #result == 0 then
+    return fallback
+  end
+  return result
+end
+
+local function selectIndex(options, value)
+  for i, option in ipairs(options) do
+    if option == value then
+      -- ui.select's selectedIndex is 0-based (verified: the reconciler feeds
+      -- it straight into a size_t index over the options vector).
+      return i - 1
+    end
+  end
+  return 0
 end
 
 -- Estimates the wrapped-line count of composer text: one line per explicit
@@ -281,12 +368,36 @@ local function messageRow(message)
       }))
     end
   end
+  if message.queued then
+    table.insert(content, ui.label({
+      text = "queued",
+      color = "on_surface_variant",
+      fontSize = 10,
+      maxWidth = 280,
+    }))
+  end
   table.insert(content, ui.label({ text = message.text, color = textColor, fontSize = 13, maxWidth = 280 }))
   if message.text ~= "" then
     table.insert(content, ui.button({
       text = "copy",
       variant = "ghost",
       onClick = copyCallback(message),
+    }))
+  end
+  if message.queued and not streaming then
+    table.insert(content, ui.row({ gap = 6 }, {
+      ui.button({ text = "send now", variant = "ghost", onClick = "onSendQueued" }),
+      ui.button({ text = "cancel", variant = "ghost", onClick = "onCancelQueued" }),
+    }))
+  end
+  if not streaming
+    and not isUser
+    and isLastMessage(message)
+    and (message.status == "stopped" or message.status == "error") then
+    table.insert(content, ui.button({
+      text = "retry",
+      variant = "ghost",
+      onClick = retryCallback(message),
     }))
   end
   if message.needsLogin then
@@ -382,11 +493,36 @@ local function composer()
       flexGrow = 1,
       multiline = true,
       height = COMPOSER_BASE_HEIGHT + (composerLines - 1) * COMPOSER_LINE_HEIGHT,
-      enabled = not streaming,
+      enabled = true,
       onChange = "onComposerChanged",
       onSubmit = "onSubmit",
     }),
     ui.button({ text = buttonText, variant = buttonVariant, onClick = buttonClick }),
+  })
+end
+
+local function switchers()
+  local configuredModels = validStringList(noctalia.getConfig("models"), { "sonnet", "opus", "haiku", "fable" })
+  local modelOptions = { "default" }
+  for _, model in ipairs(configuredModels) do
+    table.insert(modelOptions, model)
+  end
+  local effortOptions = { "default", "low", "medium", "high", "xhigh", "max" }
+  local selectedModel = overrideModel == "" and "default" or overrideModel
+  local selectedEffort = overrideEffort == "" and "default" or overrideEffort
+  return ui.row({ gap = 8, align = "center" }, {
+    ui.select({
+      options = modelOptions,
+      selectedIndex = selectIndex(modelOptions, selectedModel),
+      enabled = not streaming,
+      onChange = "onModelChanged",
+    }),
+    ui.select({
+      options = effortOptions,
+      selectedIndex = selectIndex(effortOptions, selectedEffort),
+      enabled = not streaming,
+      onChange = "onEffortChanged",
+    }),
   })
 end
 
@@ -399,11 +535,30 @@ render = function()
     table.insert(children, resumeRow)
   end
   table.insert(children, messageList())
+  table.insert(children, switchers())
   table.insert(children, composer())
   panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 10, align = "stretch" }, children))
 end
 
 -- ── CALLBACKS ─────────────────────────────────────────────────────────────
+
+local function dispatchQueued()
+  if streaming or queuedPrompt == nil then
+    return
+  end
+  local prompt = queuedPrompt
+  local queuedMessage = nil
+  if queuedKey ~= nil then
+    queuedMessage = findMessageByKey(queuedKey)
+  end
+  if queuedMessage ~= nil then
+    queuedMessage.queued = nil
+  end
+  queuedPrompt = nil
+  queuedKey = nil
+  local uuid, resume = sessionPolicy()
+  startStream(prompt, { uuid = uuid, resume = resume, appendUserRow = false })
+end
 
 -- Called from the runStream closure (not by name from UI). The streamId guard
 -- drops buffered lines that arrive after a stop or a newer send.
@@ -429,7 +584,7 @@ local function handleLine(streamId, line, wasResume)
     elseif ev.type == "rate_limit_event" or ev.type == "assistant" then
       return
     elseif ev.type == "stream_event" then
-      local msg = messages[#messages]
+      local msg = openMessage
       if msg == nil or msg.role ~= "assistant" then
         noctalia.log("Claude launcher: stream_event without open assistant message")
         return
@@ -479,7 +634,8 @@ local function handleLine(streamId, line, wasResume)
         return
       end
     elseif ev.type == "result" then
-      local msg = messages[#messages]
+      local msg = openMessage
+      local shouldDispatchQueued = false
       streaming = false
       panel.setWantsSecondTicks(false)
       if msg ~= nil and msg.role == "assistant" then
@@ -525,9 +681,14 @@ local function handleLine(streamId, line, wasResume)
           end
           hasSession = true
           persistSessionId(currentUuid)
+          shouldDispatchQueued = true
         end
       end
+      openMessage = nil
       render()
+      if shouldDispatchQueued and queuedPrompt ~= nil then
+        dispatchQueued()
+      end
     else
       if seenUnknownTypes[ev.type] ~= true then
         seenUnknownTypes[ev.type] = true
@@ -540,32 +701,14 @@ local function handleLine(streamId, line, wasResume)
   end
 end
 
--- Shared by Enter-to-submit (onSubmit, value passed directly by the host —
--- verified against notes.luau's onEdited/onFlushNow/onRename, which all take
--- the input's committed value as their first argument, not a mirror) and the
--- send button (which mirrors the buffer via onComposerChanged instead, since
--- a button click carries no value of its own).
-local function doSubmit(text)
-  if streaming then
-    return
+startStream = function(prompt, opts)
+  if opts.appendUserRow then
+    appendMessage("user", prompt)
   end
-
-  local trimmed = noctalia.string.trim(text or "")
-  if trimmed == "" then
-    return
-  end
-  appendMessage("user", trimmed)
   local assistantMessage = appendMessage("assistant", "", "streaming")
-  local uuid
-  local resume = false
-  if sessionId ~= nil and hasSession then
-    uuid = sessionId
-    resume = true
-  else
-    uuid = newUuid()
-    sessionId = uuid
-    hasSession = false
-  end
+  openMessage = assistantMessage
+  local uuid = opts.uuid
+  local resume = opts.resume == true
   currentUuid = uuid
   lastSendWasResume = resume
   diagBuffer = {}
@@ -585,17 +728,54 @@ local function doSubmit(text)
     noctalia.log("Claude launcher: failed to create workspace dir: " .. tostring(workspaceErr))
   end
 
-  local ok = noctalia.runStream(buildCommand(trimmed, uuid, resume), function(line)
+  local ok = noctalia.runStream(buildCommand(prompt, uuid, resume), function(line)
     handleLine(streamId, line, resume)
   end)
   if not ok then
     assistantMessage.status = "error"
     assistantMessage.text = "failed to start stream"
     streaming = false
+    openMessage = nil
     panel.setWantsSecondTicks(false)
     render()
     noctalia.notifyError("Claude launcher", "failed to start stream")
   end
+end
+
+-- Shared by Enter-to-submit (onSubmit, value passed directly by the host —
+-- verified against notes.luau's onEdited/onFlushNow/onRename, which all take
+-- the input's committed value as their first argument, not a mirror) and the
+-- send button (which mirrors the buffer via onComposerChanged instead, since
+-- a button click carries no value of its own).
+local function doSubmit(text)
+  local trimmed = noctalia.string.trim(text or "")
+  if trimmed == "" then
+    return
+  end
+
+  if streaming then
+    local queuedMessage = nil
+    if queuedKey ~= nil then
+      queuedMessage = findMessageByKey(queuedKey)
+    end
+    if queuedMessage == nil then
+      queuedMessage = appendMessage("user", trimmed)
+      queuedMessage.queued = true
+      queuedKey = queuedMessage.key
+    else
+      queuedMessage.text = trimmed
+      queuedMessage.queued = true
+    end
+    queuedPrompt = trimmed
+    composerBuffer = ""
+    composerLines = 1
+    inputRev += 1
+    render()
+    return
+  end
+
+  local uuid, resume = sessionPolicy()
+  startStream(trimmed, { uuid = uuid, resume = resume, appendUserRow = true })
 end
 
 function onSubmit(text)
@@ -615,16 +795,48 @@ function onSendClick()
   doSubmit(composerBuffer)
 end
 
+function onModelChanged(_index, text)
+  if text == "default" then
+    overrideModel = ""
+  elseif type(text) == "string" then
+    overrideModel = text
+  end
+  render()
+end
+
+function onEffortChanged(_index, text)
+  if text == "default" then
+    overrideEffort = ""
+  elseif type(text) == "string" then
+    overrideEffort = text
+  end
+  render()
+end
+
+function onSendQueued()
+  dispatchQueued()
+end
+
+function onCancelQueued()
+  if queuedKey ~= nil then
+    removeMessageByKey(queuedKey)
+  end
+  queuedPrompt = nil
+  queuedKey = nil
+  render()
+end
+
 function onStop()
   if currentUuid ~= nil then
     noctalia.runAsync("pkill -TERM -f " .. shellQuote(currentUuid))
   end
   streaming = false
   activeStreamId += 1
-  local message = messages[#messages]
+  local message = openMessage
   if message ~= nil then
     message.status = "stopped"
   end
+  openMessage = nil
   panel.setWantsSecondTicks(false)
   render()
 end
@@ -661,6 +873,11 @@ function onNewChat()
   persistedId = nil
   diagBuffer = {}
   streaming = false
+  openMessage = nil
+  queuedPrompt = nil
+  queuedKey = nil
+  overrideModel = ""
+  overrideEffort = ""
   activeStreamId += 1
   deltaCount = 0
   composerBuffer = ""
@@ -693,7 +910,7 @@ function update()
       stdout = noctalia.string.trim(result.stdout)
     end
     if stdout == "" then
-      local message = messages[#messages]
+      local message = openMessage
       if message ~= nil then
         message.status = "error"
         if message.text ~= "" then
@@ -711,6 +928,7 @@ function update()
         end
       end
       streaming = false
+      openMessage = nil
       panel.setWantsSecondTicks(false)
       render()
     end

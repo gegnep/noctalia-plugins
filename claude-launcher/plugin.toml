@@ -33,6 +33,13 @@ description = "Passed as --model when non-empty; empty uses the CLI default"
 default = ""
 
 [[setting]]
+key = "models"
+type = "string_list"
+label = "Models"
+description = "Model aliases offered by the in-panel switcher"
+default = ["sonnet", "opus", "haiku", "fable"]
+
+[[setting]]
 key = "effort"
 type = "select"
 label = "Effort"
@@ -43,6 +50,8 @@ options = [
   { value = "low", label = "low" },
   { value = "medium", label = "medium" },
   { value = "high", label = "high" },
+  { value = "xhigh", label = "xhigh" },
+  { value = "max", label = "max" },
 ]
 
 [[setting]]
