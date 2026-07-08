@@ -59,6 +59,8 @@ if `msg.role ~= "assistant"` something is off — log and return).
 
 1. `streaming = false`; `panel.setWantsSecondTicks(false)` (watchdog off).
 2. `ev.is_error == true` (or `subtype ~= "success"`): `msg.status = "error"`;
+   if the error text mentions `/login` or `Invalid API key`, also set
+   `msg.needsLogin = true` (renders a runInTerminal login affordance);
    `msg.text` = whatever streamed so far, with `ev.result` (string) appended as
    the error explanation if non-empty; if `diagBuffer` non-empty, append its
    tail. **Phase 4 addition**: if the send used `--resume` and the error text

@@ -12,6 +12,7 @@ local MAX_VISIBLE_MESSAGES = 100
 --   thinking = string?,
 --   thinkingOpen = boolean,
 --   status = "done" | "streaming" | "thinking" | "stopped" | "error",
+--   needsLogin = boolean?,       -- error was the CLI's not-authenticated error
 --   key = string,
 -- }
 local messages = {}
@@ -118,15 +119,18 @@ local function diagTail(maxLines)
   return table.concat(lines, "\n")
 end
 
+local function claudeCommand()
+  local cmd = noctalia.getConfig("claude_command")
+  if type(cmd) ~= "string" or noctalia.string.trim(cmd) == "" then
+    return "claude"
+  end
+  return cmd
+end
+
 -- Flags verified against claude --help 2026-07-07 (CLI v2.1.201); re-verify
 -- after CLI upgrades.
 local function buildCommand(prompt, uuid, resume)
-  local claudeCommand = noctalia.getConfig("claude_command")
-  if type(claudeCommand) ~= "string" or noctalia.string.trim(claudeCommand) == "" then
-    claudeCommand = "claude"
-  end
-
-  local cmd = claudeCommand
+  local cmd = claudeCommand()
     .. " -p " .. shellQuote(prompt)
     .. " --output-format stream-json"
     .. " --verbose"
@@ -230,6 +234,19 @@ local function messageRow(message)
     end
   end
   table.insert(content, ui.label({ text = message.text, color = textColor, fontSize = 13, maxWidth = 280 }))
+  if message.needsLogin then
+    table.insert(content, ui.button({
+      text = "Log in in a terminal",
+      variant = "outline",
+      onClick = "onLoginTerminal",
+    }))
+    table.insert(content, ui.label({
+      text = "runs your configured claude command interactively; use /login there once",
+      color = "on_surface_variant",
+      fontSize = 11,
+      maxWidth = 280,
+    }))
+  end
 
   local bubble = ui.column({
     fill = isUser and "surface_variant" or nil,
@@ -407,6 +424,14 @@ local function handleLine(streamId, line, wasResume)
         end
         if ev.is_error == true or ev.subtype ~= "success" then
           msg.status = "error"
+          -- The CLI's not-authenticated error mentions /login; auth lives in
+          -- whatever home the configured claude_command uses, so the fix is a
+          -- one-time interactive login with that exact command (see
+          -- onLoginTerminal), never injecting HOME/env from the plugin.
+          if string.find(resultText, "/login", 1, true) ~= nil
+            or string.find(resultText, "Invalid API key", 1, true) ~= nil then
+            msg.needsLogin = true
+          end
           if resultText ~= "" then
             if msg.text ~= "" then
               msg.text ..= "\n"
@@ -525,6 +550,12 @@ function onStop()
   end
   panel.setWantsSecondTicks(false)
   render()
+end
+
+function onLoginTerminal()
+  if not noctalia.runInTerminal(claudeCommand()) then
+    noctalia.notifyError("Claude launcher", "could not open a terminal")
+  end
 end
 
 function onResumeLast()
