@@ -31,6 +31,7 @@ local hasSession = false
 local watchdogInFlight = false
 local seenUnknownTypes = {}
 local messageStartSeen = false
+local lastSendWasResume = false
 
 -- Bumped whenever the composer needs to be cleared: ui.input is uncontrolled,
 -- so the only way to reset its buffer is to recreate it under a new key.
@@ -66,6 +67,10 @@ local function statePath()
     xdgState = noctalia.expandPath("~/.local/state")
   end
   return xdgState .. "/noctalia-claude-launcher"
+end
+
+local function workspaceDir()
+  return statePath() .. "/workspace"
 end
 
 local function persistSessionId(uuid)
@@ -127,8 +132,8 @@ local function claudeCommand()
   return cmd
 end
 
--- Flags verified against claude --help 2026-07-07 (CLI v2.1.201); re-verify
--- after CLI upgrades.
+-- Flags verified against claude --help 2026-07-07 (CLI v2.1.201); dedicated
+-- workspace cwd keeps Claude's per-project state out of the user's home.
 local function buildCommand(prompt, uuid, resume)
   local cmd = claudeCommand()
     .. " -p " .. shellQuote(prompt)
@@ -157,7 +162,7 @@ local function buildCommand(prompt, uuid, resume)
     cmd ..= " --tools ''"
   end
 
-  return cmd .. " 2>&1"
+  return "cd " .. shellQuote(workspaceDir()) .. " && " .. cmd .. " 2>&1"
 end
 
 local function appendMessage(role, text, status)
@@ -502,6 +507,7 @@ local function doSubmit(text)
     hasSession = false
   end
   currentUuid = uuid
+  lastSendWasResume = resume
   diagBuffer = {}
   lastLineAt = os.time()
   messageStartSeen = false
@@ -512,6 +518,11 @@ local function doSubmit(text)
   inputRev += 1
   panel.setWantsSecondTicks(true)
   render()
+
+  local madeWorkspace, workspaceErr = noctalia.mkdirAll(workspaceDir())
+  if not madeWorkspace then
+    noctalia.log("Claude launcher: failed to create workspace dir: " .. tostring(workspaceErr))
+  end
 
   local ok = noctalia.runStream(buildCommand(trimmed, uuid, resume), function(line)
     handleLine(streamId, line, resume)
@@ -585,7 +596,10 @@ function update()
   if not streaming or watchdogInFlight or currentUuid == nil then
     return
   end
-  if os.time() - lastLineAt <= 20 then
+  -- 5s of silence just triggers a pgrep liveness probe; a slow first token is
+  -- harmless (the process is found and nothing happens). Only a vanished
+  -- process finalizes as an error.
+  if os.time() - lastLineAt <= 5 then
     return
   end
   watchdogInFlight = true
@@ -610,6 +624,12 @@ function update()
         message.text ..= "claude exited without a result"
         if #diagBuffer > 0 then
           message.text ..= "\n" .. diagTail(5)
+        end
+        if lastSendWasResume then
+          sessionId = nil
+          hasSession = false
+          clearPersistedSessionId()
+          message.text ..= "\nSession could not be resumed - starting a new chat on next send."
         end
       end
       streaming = false
