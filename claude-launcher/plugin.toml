@@ -36,7 +36,7 @@ default = ""
 key = "model"
 type = "string"
 label = "Model"
-description = "Passed as --model when non-empty; empty uses the CLI default"
+description = "Default model for new chats (one of the Models list); empty uses the list's first entry"
 default = ""
 
 [[setting]]
@@ -50,15 +50,15 @@ default = ["sonnet", "opus", "haiku", "fable"]
 key = "effort"
 type = "select"
 label = "Effort"
-description = "Passed as --effort when non-empty"
+description = "Default reasoning level for new chats; empty seeds the picker with High"
 default = ""
 options = [
-  { value = "", label = "default" },
-  { value = "low", label = "low" },
-  { value = "medium", label = "medium" },
-  { value = "high", label = "high" },
-  { value = "xhigh", label = "xhigh" },
-  { value = "max", label = "max" },
+  { value = "", label = "unset" },
+  { value = "low", label = "Low" },
+  { value = "medium", label = "Medium" },
+  { value = "high", label = "High" },
+  { value = "xhigh", label = "X-High" },
+  { value = "max", label = "Max" },
 ]
 
 [[setting]]

@@ -276,6 +276,13 @@ local function claudeCommand()
   return cmd
 end
 
+-- Forward declarations: buildCommand (below) needs these, but they're defined
+-- near validStringList further down the file (same pattern as render/startStream).
+local modelInfo
+local availableModels
+local effectiveModel
+local effectiveEffort
+
 -- Flags verified against claude --help 2026-07-07 (CLI v2.1.201); dedicated
 -- workspace cwd keeps Claude's per-project state out of the user's home.
 local function buildCommand(prompt, uuid, resume)
@@ -291,20 +298,16 @@ local function buildCommand(prompt, uuid, resume)
     cmd ..= " --session-id " .. tostring(uuid)
   end
 
-  local model = overrideModel
-  if model == "" then
-    model = noctalia.getConfig("model")
-  end
-  if type(model) == "string" and model ~= "" then
-    cmd ..= " --model " .. shellQuote(model)
-  end
+  local model = effectiveModel()
+  cmd ..= " --model " .. shellQuote(model)
 
-  local effort = overrideEffort
-  if effort == "" then
-    effort = noctalia.getConfig("effort")
-  end
-  if type(effort) == "string" and effort ~= "" then
+  local kind = modelInfo(model).effortKind
+  local effort = effectiveEffort()
+  if kind == "levels" then
     cmd ..= " --effort " .. shellQuote(effort)
+  elseif effort ~= "off" then
+    -- toggle-kind models (e.g. haiku): extended thinking ON maps to --effort high.
+    cmd ..= " --effort high"
   end
 
   local allowTools = noctalia.getConfig("allow_tools")
@@ -506,6 +509,54 @@ local function validStringList(value, fallback)
     return fallback
   end
   return result
+end
+
+-- Known model aliases -> display label + reasoning capability. Aliases the
+-- user adds beyond these get their raw alias as label and level-based effort.
+local MODEL_INFO = {
+  sonnet = { label = "Sonnet", effortKind = "levels" },
+  opus = { label = "Opus", effortKind = "levels" },
+  haiku = { label = "Haiku", effortKind = "toggle" },
+  fable = { label = "Fable", effortKind = "levels" },
+}
+local EFFORT_LEVELS = { "low", "medium", "high", "xhigh", "max" }
+local EFFORT_LABELS = { low = "Low", medium = "Medium", high = "High", xhigh = "X-High", max = "Max" }
+
+function modelInfo(alias)
+  return MODEL_INFO[alias] or { label = alias, effortKind = "levels" }
+end
+
+function availableModels()
+  return validStringList(noctalia.getConfig("models"), { "sonnet", "opus", "haiku", "fable" })
+end
+
+-- Replaces the old "default" placeholder concept: there is always a concrete
+-- effective model/effort, falling back through override -> settings -> first
+-- available model / "high".
+function effectiveModel()
+  if overrideModel ~= "" then
+    return overrideModel
+  end
+  local configured = noctalia.getConfig("model")
+  if type(configured) == "string" and configured ~= "" then
+    for _, alias in ipairs(availableModels()) do
+      if alias == configured then
+        return configured
+      end
+    end
+  end
+  return availableModels()[1]
+end
+
+function effectiveEffort()
+  if overrideEffort ~= "" then
+    return overrideEffort
+  end
+  local configured = noctalia.getConfig("effort")
+  if type(configured) == "string" and configured ~= "" then
+    return configured
+  end
+  return "high"
 end
 
 local function selectIndex(options, value)
@@ -850,11 +901,13 @@ local function header()
   }
   if #messages > 0 then
     local segments = {}
-    if overrideModel ~= "" then
-      table.insert(segments, overrideModel)
-    end
-    if overrideEffort ~= "" then
-      table.insert(segments, overrideEffort)
+    local model = effectiveModel()
+    table.insert(segments, modelInfo(model).label)
+    if modelInfo(model).effortKind == "levels" then
+      local effort = effectiveEffort()
+      table.insert(segments, EFFORT_LABELS[effort] or effort)
+    elseif effectiveEffort() ~= "off" then
+      table.insert(segments, "Extended")
     end
     table.insert(segments, tostring(#messages) .. " msgs")
     table.insert(children, ui.label({
@@ -904,27 +957,48 @@ local function composer()
 end
 
 local function switchers()
-  local configuredModels = validStringList(noctalia.getConfig("models"), { "sonnet", "opus", "haiku", "fable" })
-  local modelOptions = { "default" }
-  for _, model in ipairs(configuredModels) do
-    table.insert(modelOptions, model)
+  local models = availableModels()
+  local modelLabels = {}
+  for _, alias in ipairs(models) do
+    table.insert(modelLabels, modelInfo(alias).label)
   end
-  local effortOptions = { "default", "low", "medium", "high", "xhigh", "max" }
-  local selectedModel = overrideModel == "" and "default" or overrideModel
-  local selectedEffort = overrideEffort == "" and "default" or overrideEffort
-  return ui.row({ gap = 8, align = "center" }, {
-    ui.select({
-      options = modelOptions,
-      selectedIndex = selectIndex(modelOptions, selectedModel),
-      enabled = not streaming,
-      onChange = "onModelChanged",
+  local currentModel = effectiveModel()
+  local currentEffort = effectiveEffort()
+  local kind = modelInfo(currentModel).effortKind
+
+  local reasoningRow
+  if kind == "levels" then
+    reasoningRow = ui.row({ gap = 6, align = "center" }, {
+      ui.label({ text = "Reasoning", fontSize = 12, color = "on_surface_variant" }),
+      ui.select({
+        options = { "Low", "Medium", "High", "X-High", "Max" },
+        selectedIndex = selectIndex(EFFORT_LEVELS, currentEffort),
+        enabled = not streaming,
+        onChange = "onEffortChanged",
+      }),
+    })
+  else
+    reasoningRow = ui.row({ gap = 6, align = "center" }, {
+      ui.label({ text = "Extended thinking", fontSize = 12, color = "on_surface_variant" }),
+      ui.toggle({
+        checked = currentEffort ~= "off",
+        enabled = not streaming,
+        onChange = "onThinkingToggled",
+      }),
+    })
+  end
+
+  return ui.column({ gap = 8, align = "center" }, {
+    ui.row({ gap = 6, align = "center" }, {
+      ui.label({ text = "Model", fontSize = 12, color = "on_surface_variant" }),
+      ui.select({
+        options = modelLabels,
+        selectedIndex = selectIndex(models, currentModel),
+        enabled = not streaming,
+        onChange = "onModelChanged",
+      }),
     }),
-    ui.select({
-      options = effortOptions,
-      selectedIndex = selectIndex(effortOptions, selectedEffort),
-      enabled = not streaming,
-      onChange = "onEffortChanged",
-    }),
+    reasoningRow,
   })
 end
 
@@ -1232,21 +1306,28 @@ function onJumpToLatest()
   render()
 end
 
-function onModelChanged(_index, text)
-  if text == "default" then
-    overrideModel = ""
-  elseif type(text) == "string" then
-    overrideModel = text
+function onModelChanged(index, _text)
+  local alias = availableModels()[(tonumber(index) or 0) + 1]
+  if alias == nil then
+    return
+  end
+  overrideModel = alias
+  if modelInfo(alias).effortKind == "levels" and overrideEffort == "off" then
+    overrideEffort = ""
   end
   render()
 end
 
-function onEffortChanged(_index, text)
-  if text == "default" then
-    overrideEffort = ""
-  elseif type(text) == "string" then
-    overrideEffort = text
+function onEffortChanged(index, _text)
+  local level = EFFORT_LEVELS[(tonumber(index) or 0) + 1]
+  if level ~= nil then
+    overrideEffort = level
   end
+  render()
+end
+
+function onThinkingToggled(value)
+  overrideEffort = (value == "true") and "high" or "off"
   render()
 end
 
