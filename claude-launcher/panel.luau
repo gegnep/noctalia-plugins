@@ -44,6 +44,7 @@ local queuedPrompt = nil
 local queuedKey = nil
 local view = "chat"
 local renamingChatId = nil
+local pendingDeleteChatId = nil
 
 -- Bumped whenever the composer needs to be cleared: ui.input is uncontrolled,
 -- so the only way to reset its buffer is to recreate it under a new key.
@@ -560,10 +561,14 @@ local function messageRow(message)
     }))
   end
   if message.thinking ~= nil and message.thinking ~= "" then
-    table.insert(content, ui.button({
-      text = message.thinkingOpen and "hide thinking" or "show thinking",
-      variant = "ghost",
-      onClick = thinkingToggleCallback(message),
+    table.insert(content, ui.row({ gap = 4, align = "center" }, {
+      ui.button({
+        glyph = message.thinkingOpen and "chevron-down" or "chevron-right",
+        glyphSize = 12,
+        variant = "ghost",
+        onClick = thinkingToggleCallback(message),
+      }),
+      ui.label({ text = "thinking", color = "on_surface_variant", fontSize = 11 }),
     }))
     if message.thinkingOpen then
       table.insert(content, ui.label({
@@ -583,27 +588,25 @@ local function messageRow(message)
     }))
   end
   table.insert(content, ui.label({ text = message.text, color = textColor, fontSize = 13, maxWidth = 280 }))
-  if message.text ~= "" then
-    table.insert(content, ui.button({
-      text = "copy",
-      variant = "ghost",
-      onClick = copyCallback(message),
-    }))
+  -- Per-message actions (copy / retry) only apply once the message has
+  -- settled - not while it's actively streaming.
+  if message.text ~= ""
+    and (message.status == "done" or message.status == "stopped" or message.status == "error") then
+    local actions = {
+      ui.button({ glyph = "copy", variant = "ghost", onClick = copyCallback(message) }),
+    }
+    if not streaming
+      and not isUser
+      and isLastMessage(message)
+      and (message.status == "stopped" or message.status == "error") then
+      table.insert(actions, ui.button({ glyph = "repeat", variant = "ghost", onClick = retryCallback(message) }))
+    end
+    table.insert(content, ui.row({ gap = 4 }, actions))
   end
   if message.queued and not streaming then
     table.insert(content, ui.row({ gap = 6 }, {
-      ui.button({ text = "send now", variant = "ghost", onClick = "onSendQueued" }),
-      ui.button({ text = "cancel", variant = "ghost", onClick = "onCancelQueued" }),
-    }))
-  end
-  if not streaming
-    and not isUser
-    and isLastMessage(message)
-    and (message.status == "stopped" or message.status == "error") then
-    table.insert(content, ui.button({
-      text = "retry",
-      variant = "ghost",
-      onClick = retryCallback(message),
+      ui.button({ glyph = "check", variant = "ghost", onClick = "onSendQueued" }),
+      ui.button({ glyph = "close", variant = "ghost", onClick = "onCancelQueued" }),
     }))
   end
   if message.needsLogin then
@@ -621,10 +624,10 @@ local function messageRow(message)
   end
 
   local bubble = ui.column({
-    fill = isUser and "surface_variant" or nil,
-    radius = isUser and 10 or 0,
-    paddingH = isUser and 10 or 0,
-    paddingV = isUser and 8 or 0,
+    fill = message.queued and "secondary/0.25" or (isUser and "surface_variant" or nil),
+    radius = message.queued and 8 or (isUser and 12 or 0),
+    paddingH = message.queued and 6 or (isUser and 10 or 0),
+    paddingV = message.queued and 4 or (isUser and 8 or 0),
     align = "start",
     gap = 4,
   }, content)
@@ -678,6 +681,7 @@ local function openChatCallback(chat)
     diagBuffer = {}
     view = "chat"
     renamingChatId = nil
+    pendingDeleteChatId = nil
     local ok, err = pcall(function()
       local path = transcriptsDir() .. "/" .. chat.id .. ".jsonl"
       local info = noctalia.fileInfo(path)
@@ -745,13 +749,15 @@ local function terminalChatCallback(chat)
   return name
 end
 
+-- Trash click only arms the two-step confirm (see pendingDeleteChatId); the
+-- actual delete happens in the plain onConfirmDeleteChat global below.
 local function deleteChatCallback(chat)
   local name = "onDeleteChat_" .. chat.id:gsub("%W", "_")
   env[name] = function()
     if streaming then
       return
     end
-    deleteChat(chat.id)
+    pendingDeleteChatId = chat.id
     render()
   end
   return name
@@ -760,8 +766,9 @@ end
 local function historyList()
   if #historyIndex.chats == 0 then
     return ui.scroll({ flexGrow = 1, gap = 6 }, {
-      ui.row({ key = "history-empty", flexGrow = 1, justify = "center", align = "center" }, {
-        ui.label({ text = "No chats yet", color = "on_surface_variant/0.7", fontSize = 13 }),
+      ui.column({ key = "history-empty", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
+        ui.glyph({ name = "history", size = 48, color = "on_surface_variant" }),
+        ui.label({ text = "No chats yet", color = "on_surface_variant", fontSize = 12 }),
       }),
     })
   end
@@ -785,39 +792,72 @@ local function historyList()
         onClick = openChatCallback(chat),
       })
     end
-    table.insert(rows, ui.row({ key = "chat-" .. chat.id, align = "center", gap = 6 }, {
+
+    local row = {
       titleControl,
       ui.label({
         text = noctalia.formatTime("%b %d %H:%M", chat.updatedAt),
         color = "on_surface_variant",
         fontSize = 11,
       }),
-      ui.button({ text = "rename", variant = "ghost", onClick = renameChatCallback(chat) }),
-      ui.button({ text = "terminal", variant = "ghost", onClick = terminalChatCallback(chat) }),
-      ui.button({ text = "delete", variant = "ghost", onClick = deleteChatCallback(chat) }),
-    }))
+    }
+    if pendingDeleteChatId == chat.id then
+      table.insert(row, ui.label({ text = "delete?", color = "error", fontSize = 12 }))
+      table.insert(row, ui.button({ glyph = "check", variant = "primary", onClick = "onConfirmDeleteChat" }))
+      table.insert(row, ui.button({ glyph = "close", variant = "ghost", onClick = "onCancelDeleteChat" }))
+    else
+      table.insert(row, ui.button({ glyph = "pencil", variant = "ghost", onClick = renameChatCallback(chat) }))
+      table.insert(row, ui.button({ glyph = "terminal", variant = "ghost", onClick = terminalChatCallback(chat) }))
+      table.insert(row, ui.button({ glyph = "trash", variant = "ghost", onClick = deleteChatCallback(chat) }))
+    end
+
+    table.insert(rows, ui.row({ key = "chat-" .. chat.id, align = "center", gap = 6 }, row))
   end
   return ui.scroll({ flexGrow = 1, gap = 6 }, rows)
 end
 
 local function header()
-  return ui.row({ align = "center", gap = 8 }, {
-    ui.label({ text = "Claude", fontSize = 16, fontWeight = "semibold", color = "on_surface" }),
-    ui.spacer({ flexGrow = 1 }),
-    ui.button({ text = view == "chat" and "History" or "Back", variant = "ghost", onClick = "onToggleHistory" }),
-    ui.button({ text = "copy chat", variant = "ghost", onClick = "onCopyChat" }),
-    ui.button({ text = "New chat", glyph = "plus", variant = "ghost", onClick = "onNewChat" }),
-  })
+  if view == "history" then
+    return ui.row({ align = "center", gap = 8 }, {
+      ui.button({ glyph = "arrow-left", variant = "ghost", onClick = "onToggleHistory" }),
+      ui.label({ text = "History", fontSize = 16, fontWeight = "bold", color = "on_surface" }),
+      ui.spacer({ flexGrow = 1 }),
+    })
+  end
+
+  local children = {
+    ui.label({ text = "Claude", fontSize = 16, fontWeight = "bold", color = "on_surface" }),
+  }
+  if #messages > 0 then
+    local segments = {}
+    if overrideModel ~= "" then
+      table.insert(segments, overrideModel)
+    end
+    if overrideEffort ~= "" then
+      table.insert(segments, overrideEffort)
+    end
+    table.insert(segments, tostring(#messages) .. " msgs")
+    table.insert(children, ui.label({
+      text = table.concat(segments, " \194\183 "),
+      fontSize = 12,
+      color = "on_surface_variant",
+    }))
+  end
+  table.insert(children, ui.spacer({ flexGrow = 1 }))
+  table.insert(children, ui.button({ glyph = "history", variant = "ghost", onClick = "onToggleHistory" }))
+  if #messages > 0 then
+    table.insert(children, ui.button({ glyph = "copy", variant = "ghost", onClick = "onCopyChat" }))
+  end
+  table.insert(children, ui.button({ glyph = "plus", variant = "ghost", onClick = "onNewChat" }))
+  return ui.row({ align = "center", gap = 8 }, children)
 end
 
 local function composer()
-  local buttonText = "Send"
-  local buttonVariant = "primary"
-  local buttonClick = "onSendClick"
+  local sendButton
   if streaming then
-    buttonText = "Stop"
-    buttonVariant = "destructive"
-    buttonClick = "onStop"
+    sendButton = ui.button({ glyph = "player-stop", variant = "outline", onClick = "onStop" })
+  else
+    sendButton = ui.button({ glyph = "send", variant = "primary", onClick = "onSendClick" })
   end
 
   return ui.row({ gap = 8, align = "center" }, {
@@ -831,7 +871,7 @@ local function composer()
       onChange = "onComposerChanged",
       onSubmit = "onSubmit",
     }),
-    ui.button({ text = buttonText, variant = buttonVariant, onClick = buttonClick }),
+    sendButton,
   })
 end
 
@@ -860,6 +900,17 @@ local function switchers()
   })
 end
 
+-- Shown in place of the message list before the first message exists; the
+-- model/effort switchers live here instead of a permanent chrome row once a
+-- chat has messages (the header caption reports their values then).
+local function emptyState()
+  return ui.column({ flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
+    ui.glyph({ name = "sparkles", size = 48, color = "on_surface_variant" }),
+    ui.label({ text = "Ask Claude anything", color = "on_surface_variant", fontSize = 12 }),
+    switchers(),
+  })
+end
+
 render = function()
   local children = {
     header(),
@@ -867,11 +918,14 @@ render = function()
   if view == "history" then
     table.insert(children, historyList())
   else
-    table.insert(children, messageList())
-    table.insert(children, switchers())
+    if #messages == 0 and not streaming then
+      table.insert(children, emptyState())
+    else
+      table.insert(children, messageList())
+    end
     table.insert(children, composer())
   end
-  panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 10, align = "stretch" }, children))
+  panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 12, align = "stretch" }, children))
 end
 
 -- ── CALLBACKS ─────────────────────────────────────────────────────────────
@@ -1202,6 +1256,21 @@ function onToggleHistory()
     view = "chat"
     renamingChatId = nil
   end
+  pendingDeleteChatId = nil
+  render()
+end
+
+function onConfirmDeleteChat()
+  if streaming or pendingDeleteChatId == nil then
+    return
+  end
+  deleteChat(pendingDeleteChatId)
+  pendingDeleteChatId = nil
+  render()
+end
+
+function onCancelDeleteChat()
+  pendingDeleteChatId = nil
   render()
 end
 
