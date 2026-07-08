@@ -6,6 +6,11 @@
 
 local MAX_VISIBLE_MESSAGES = 100
 
+-- Composer auto-grow: base control height plus a per-extra-line increment.
+-- Tuned live against the real control; adjust here if it over/undershoots.
+local COMPOSER_BASE_HEIGHT = 34
+local COMPOSER_LINE_HEIGHT = 20
+
 -- messages[i] = {
 --   role = "user" | "assistant",
 --   text = string,
@@ -40,6 +45,10 @@ local inputRev = 0
 -- Mirrors the composer's live text so the send button (which cannot read the
 -- input's own buffer) has something to submit on click.
 local composerBuffer = ""
+
+-- Estimated wrapped-line count of the composer's current text, used to grow
+-- ui.input's height prop live. Reset to 1 whenever the composer is cleared.
+local composerLines = 1
 
 -- ── HELPERS ───────────────────────────────────────────────────────────────
 
@@ -201,6 +210,40 @@ local function thinkingToggleCallback(message)
   return name
 end
 
+local function copyCallback(message)
+  local name = "onCopy_" .. message.key:gsub("%W", "_")
+  env[name] = function()
+    noctalia.copyToClipboard(message.text, "text/plain")
+  end
+  return name
+end
+
+-- Estimates the wrapped-line count of composer text: one line per explicit
+-- newline segment, plus extra lines for segments that would wrap at a rough
+-- character width. Kept intentionally coarse - it only needs to grow/shrink
+-- the input's height prop, not match the host's real text layout exactly.
+local COMPOSER_WRAP_WIDTH = 38
+
+local function estimateComposerLines(value)
+  local text = value or ""
+  local lines = 1
+  local segmentStart = 1
+  local len = #text
+  local i = 1
+  while i <= len do
+    if text:sub(i, i) == "\n" then
+      lines += 1
+      local segment = text:sub(segmentStart, i - 1)
+      lines += math.max(0, math.ceil(#segment / COMPOSER_WRAP_WIDTH) - 1)
+      segmentStart = i + 1
+    end
+    i += 1
+  end
+  local lastSegment = text:sub(segmentStart, len)
+  lines += math.max(0, math.ceil(#lastSegment / COMPOSER_WRAP_WIDTH) - 1)
+  return math.max(1, math.min(6, lines))
+end
+
 -- ── UI ────────────────────────────────────────────────────────────────────
 
 local render
@@ -239,6 +282,13 @@ local function messageRow(message)
     end
   end
   table.insert(content, ui.label({ text = message.text, color = textColor, fontSize = 13, maxWidth = 280 }))
+  if message.text ~= "" then
+    table.insert(content, ui.button({
+      text = "copy",
+      variant = "ghost",
+      onClick = copyCallback(message),
+    }))
+  end
   if message.needsLogin then
     table.insert(content, ui.button({
       text = "Log in in a terminal",
@@ -268,9 +318,19 @@ local function messageRow(message)
   }, { bubble })
 end
 
+-- TEMPORARY WORKAROUND: ui.scroll exposes no programmatic scroll-to-bottom
+-- (or scroll-to-top) prop for plugins, so a normal oldest-first list leaves
+-- new messages below the fold in a long chat. Render newest-first instead so
+-- fresh content lands directly under the header, and move the "earlier
+-- messages hidden" notice to the bottom (it now represents the oldest end of
+-- the visible window). Revert to oldest-first once noctalia adds a scroll
+-- control the plugin can drive.
 local function messageList()
   local visible, hasHidden = visibleMessages()
   local rows = {}
+  for i = #visible, 1, -1 do
+    table.insert(rows, messageRow(visible[i]))
+  end
   if hasHidden then
     table.insert(rows, ui.label({
       key = "hidden-notice",
@@ -279,9 +339,6 @@ local function messageList()
       fontSize = 11,
     }))
   end
-  for _, message in ipairs(visible) do
-    table.insert(rows, messageRow(message))
-  end
   return ui.scroll({ flexGrow = 1, gap = 8 }, rows)
 end
 
@@ -289,6 +346,7 @@ local function header()
   return ui.row({ align = "center", gap = 8 }, {
     ui.label({ text = "Claude", fontSize = 16, fontWeight = "semibold", color = "on_surface" }),
     ui.spacer({ flexGrow = 1 }),
+    ui.button({ text = "copy chat", variant = "ghost", onClick = "onCopyChat" }),
     ui.button({ text = "New chat", glyph = "plus", variant = "ghost", onClick = "onNewChat" }),
   })
 end
@@ -320,8 +378,10 @@ local function composer()
   return ui.row({ gap = 8, align = "center" }, {
     ui.input({
       key = "composer-" .. inputRev,
-      placeholder = "Ask Claude\226\128\166",
+      placeholder = "Ask Claude\226\128\166 (Ctrl+Enter to send)",
       flexGrow = 1,
+      multiline = true,
+      height = COMPOSER_BASE_HEIGHT + (composerLines - 1) * COMPOSER_LINE_HEIGHT,
       enabled = not streaming,
       onChange = "onComposerChanged",
       onSubmit = "onSubmit",
@@ -515,6 +575,7 @@ local function doSubmit(text)
   activeStreamId += 1
   local streamId = activeStreamId
   composerBuffer = ""
+  composerLines = 1
   inputRev += 1
   panel.setWantsSecondTicks(true)
   render()
@@ -543,6 +604,11 @@ end
 
 function onComposerChanged(value)
   composerBuffer = value
+  local estimated = estimateComposerLines(value)
+  if estimated ~= composerLines then
+    composerLines = estimated
+    render()
+  end
 end
 
 function onSendClick()
@@ -569,6 +635,17 @@ function onLoginTerminal()
   end
 end
 
+function onCopyChat()
+  local parts = {}
+  for _, message in ipairs(messages) do
+    if message.text ~= "" then
+      local roleLabel = message.role == "user" and "User:" or "Claude:"
+      table.insert(parts, roleLabel .. " " .. message.text)
+    end
+  end
+  noctalia.copyToClipboard(table.concat(parts, "\n\n"), "text/plain")
+end
+
 function onResumeLast()
   sessionId = persistedId
   hasSession = true
@@ -587,6 +664,7 @@ function onNewChat()
   activeStreamId += 1
   deltaCount = 0
   composerBuffer = ""
+  composerLines = 1
   inputRev += 1
   panel.setWantsSecondTicks(false)
   render()

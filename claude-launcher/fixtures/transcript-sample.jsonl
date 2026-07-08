@@ -1,0 +1,11 @@
+{"type":"summary","summary":"synthetic fixture — shapes match real claude transcripts, content is fake"}
+{"type":"user","message":{"role":"user","content":"first question"},"timestamp":"2026-07-07T21:00:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"pondering the first question"}]},"timestamp":"2026-07-07T21:00:01.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"first answer part one."}]},"timestamp":"2026-07-07T21:00:02.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":" part two."}]},"timestamp":"2026-07-07T21:00:03.000Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_fake","content":"tool output that must be SKIPPED (non-string content)"}]},"timestamp":"2026-07-07T21:00:04.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"answer after the tool row - must be a SEPARATE assistant message (flush on skipped row)."}]},"timestamp":"2026-07-07T21:00:05.000Z"}
+{"type":"user","message":{"role":"user","content":"second question"},"timestamp":"2026-07-07T21:00:06.000Z"}
+not-json garbage line that must be skipped but still flush the accumulator
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"second answer."}]},"timestamp":"2026-07-07T21:00:07.000Z"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}
