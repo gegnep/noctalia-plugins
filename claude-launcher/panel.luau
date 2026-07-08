@@ -1,7 +1,7 @@
 --!nonstrict
--- Claude chat panel: message list + composer. Phase 1 is a static shell —
--- messages are seeded dummy data, submitting just echoes the text back into
--- the list. No claude subprocess yet (that's phase 3).
+-- Claude chat panel: message list + composer. Phase 2 wires streaming through
+-- a fake shell producer (5 ticks) to prove the runStream plumbing; the real
+-- claude subprocess arrives in phase 3.
 
 -- ── STATE ─────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,7 @@ local msgCounter = 0
 local sessionId = nil
 local streaming = false
 local activeStreamId = 0
+local deltaCount = 0
 
 -- Bumped whenever the composer needs to be cleared: ui.input is uncontrolled,
 -- so the only way to reset its buffer is to recreate it under a new key.
@@ -46,12 +47,6 @@ local function appendMessage(role, text, status)
   table.insert(messages, message)
   return message
 end
-
--- DUMMY SEED, removed in phase 2
-appendMessage("user", "What's the weather like on Mars?")
-appendMessage("assistant", "Cold, dusty, and thin on air: about -60C on average with a CO2 atmosphere less than 1% of Earth's pressure.")
-appendMessage("user", "Can you write me a haiku about it?")
-appendMessage("assistant", "claude exited without a result (dummy error)", "error")
 
 -- Caps the rendered list at the most recent MAX_VISIBLE_MESSAGES entries.
 local function visibleMessages()
@@ -121,15 +116,25 @@ local function header()
 end
 
 local function composer()
+  local buttonText = "Send"
+  local buttonVariant = "primary"
+  local buttonClick = "onSendClick"
+  if streaming then
+    buttonText = "Stop"
+    buttonVariant = "destructive"
+    buttonClick = "onStop"
+  end
+
   return ui.row({ gap = 8, align = "center" }, {
     ui.input({
       key = "composer-" .. inputRev,
       placeholder = "Ask Claude\226\128\166",
       flexGrow = 1,
+      enabled = not streaming,
       onChange = "onComposerChanged",
       onSubmit = "onSubmit",
     }),
-    ui.button({ text = "Send", variant = "primary", onClick = "onSendClick" }),
+    ui.button({ text = buttonText, variant = buttonVariant, onClick = buttonClick }),
   })
 end
 
@@ -143,20 +148,68 @@ end
 
 -- ── CALLBACKS ─────────────────────────────────────────────────────────────
 
+-- Called from the runStream closure (not by name from UI). The streamId guard
+-- drops buffered lines that arrive after a stop or a newer send.
+local function onStreamLine(streamId, line)
+  if streamId ~= activeStreamId or not streaming then
+    return
+  end
+
+  local obj, err = noctalia.json.decode(line)
+  if obj == nil then
+    noctalia.log(line)
+    return
+  end
+
+  if obj.type == "tick" then
+    local message = messages[#messages]
+    if message == nil then
+      return
+    end
+    message.text ..= "tick " .. tostring(obj.n) .. "\n"
+    if obj.n == 5 then
+      message.status = "done"
+      streaming = false
+    end
+    render()
+  end
+end
+
 -- Shared by Enter-to-submit (onSubmit, value passed directly by the host —
 -- verified against notes.luau's onEdited/onFlushNow/onRename, which all take
 -- the input's committed value as their first argument, not a mirror) and the
 -- send button (which mirrors the buffer via onComposerChanged instead, since
 -- a button click carries no value of its own).
 local function doSubmit(text)
+  if streaming then
+    return
+  end
+
   local trimmed = noctalia.string.trim(text or "")
   if trimmed == "" then
     return
   end
   appendMessage("user", trimmed)
+  local assistantMessage = appendMessage("assistant", "", "streaming")
+  streaming = true
+  activeStreamId += 1
+  local streamId = activeStreamId
   composerBuffer = ""
   inputRev += 1
   render()
+
+  -- for i in 1 2 3 4 5; do printf '{"type":"tick","n":%d}\n' "$i"; sleep 1; done
+  local cmd = "for i in 1 2 3 4 5; do printf '{\"type\":\"tick\",\"n\":%d}\\n' \"$i\"; sleep 1; done"
+  local ok = noctalia.runStream(cmd, function(line)
+    onStreamLine(streamId, line)
+  end)
+  if not ok then
+    assistantMessage.status = "error"
+    assistantMessage.text = "failed to start stream"
+    streaming = false
+    render()
+    noctalia.notifyError("Claude launcher", "failed to start stream")
+  end
 end
 
 function onSubmit(text)
@@ -171,12 +224,24 @@ function onSendClick()
   doSubmit(composerBuffer)
 end
 
+function onStop()
+  -- Real process kill arrives in phase 3.
+  streaming = false
+  activeStreamId += 1
+  local message = messages[#messages]
+  if message ~= nil then
+    message.status = "stopped"
+  end
+  render()
+end
+
 function onNewChat()
   messages = {}
   msgCounter = 0
   sessionId = nil
   streaming = false
-  activeStreamId = 0
+  activeStreamId += 1
+  deltaCount = 0
   composerBuffer = ""
   inputRev += 1
   render()
