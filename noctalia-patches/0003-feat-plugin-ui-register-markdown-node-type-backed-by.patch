@@ -1,4 +1,4 @@
-From 5e6a15642ad410feeec67b2fe42407c6833ff3fc Mon Sep 17 00:00:00 2001
+From c4cc32961efb9507abd1a0440239e4a504f47ed0 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Tue, 7 Jul 2026 23:54:53 -0400
 Subject: [PATCH 3/3] feat(plugin-ui): register markdown node type backed by
@@ -12,10 +12,39 @@ sizing follows parent layout like other leaf controls.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ---
+ meson.build                   |  3 +++
  src/scripting/ui_prelude.h    |  1 +
  src/ui/ui_tree_reconciler.cpp | 29 +++++++++++++++++++++++++++++
- 2 files changed, 30 insertions(+)
+ 3 files changed, 33 insertions(+)
 
+diff --git a/meson.build b/meson.build
+index d7675f3..bfe32bc 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1252,6 +1252,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
+     'src/ui/controls/image.cpp',
+     'src/ui/controls/input.cpp',
+     'src/ui/controls/label.cpp',
++    'src/ui/controls/markdown_view.cpp',
+     'src/ui/controls/progress_bar.cpp',
+     'src/ui/controls/scroll_view.cpp',
+     'src/ui/controls/scrollbar.cpp',
+@@ -1262,6 +1263,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
+     'src/ui/controls/toggle.cpp',
+     'src/ui/controls/color_swatch_preview.cpp',
+     'src/ui/app_icon_colorization.cpp',
++    'src/ui/builders.cpp',
+     'src/ui/palette.cpp',
+     'src/ui/style.cpp',
+     'src/core/timer_manager.cpp',
+@@ -1299,6 +1301,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
+     egl_dep,
+     librsvg_dep,
+     libwebp_dep,
++    md4c_dep,
+     nlohmann_dep,
+     stb_dep,
+     xkbcommon_dep,
 diff --git a/src/scripting/ui_prelude.h b/src/scripting/ui_prelude.h
 index 1145e3c..aacc725 100644
 --- a/src/scripting/ui_prelude.h
