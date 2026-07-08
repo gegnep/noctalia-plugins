@@ -1,6 +1,6 @@
 --!nonstrict
--- Claude chat panel: message list + composer. Phase 3 streams real claude CLI
--- JSON events through the parser and watchdog.
+-- Claude chat panel: message list + composer. Phase 4 streams real claude CLI
+-- JSON events through the parser, watchdog, and resumable sessions.
 
 -- ── STATE ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,7 @@ local deltaCount = 0
 local diagBuffer = {}
 local lastLineAt = 0
 local currentUuid = nil
+local hasSession = false
 local watchdogInFlight = false
 local seenUnknownTypes = {}
 local messageStartSeen = false
@@ -58,6 +59,49 @@ local function newUuid()
   return tostring(os.time()) .. "-" .. tostring(msgCounter)
 end
 
+local function statePath()
+  local xdgState = noctalia.getenv("XDG_STATE_HOME")
+  if type(xdgState) ~= "string" or noctalia.string.trim(xdgState) == "" then
+    xdgState = noctalia.expandPath("~/.local/state")
+  end
+  return xdgState .. "/noctalia-claude-launcher"
+end
+
+local function persistSessionId(uuid)
+  local dir = statePath()
+  local ok, err = noctalia.mkdirAll(dir)
+  if not ok then
+    noctalia.log("Claude launcher: failed to create state dir: " .. tostring(err))
+    return
+  end
+  ok, err = noctalia.writeFile(dir .. "/last-session", tostring(uuid))
+  if not ok then
+    noctalia.log("Claude launcher: failed to persist session id: " .. tostring(err))
+  end
+end
+
+local function loadPersistedSessionId()
+  local text = noctalia.readFile(statePath() .. "/last-session")
+  if type(text) ~= "string" then
+    return nil
+  end
+  local uuid = noctalia.string.trim(text)
+  if uuid == "" then
+    return nil
+  end
+  return uuid
+end
+
+local function clearPersistedSessionId()
+  if type(noctalia.removeFile) == "function" then
+    noctalia.removeFile(statePath() .. "/last-session")
+  else
+    noctalia.writeFile(statePath() .. "/last-session", "")
+  end
+end
+
+local persistedId = loadPersistedSessionId()
+
 local function pushDiag(line)
   table.insert(diagBuffer, line)
   while #diagBuffer > 20 do
@@ -76,7 +120,7 @@ end
 
 -- Flags verified against claude --help 2026-07-07 (CLI v2.1.201); re-verify
 -- after CLI upgrades.
-local function buildCommand(prompt, uuid)
+local function buildCommand(prompt, uuid, resume)
   local claudeCommand = noctalia.getConfig("claude_command")
   if type(claudeCommand) ~= "string" or noctalia.string.trim(claudeCommand) == "" then
     claudeCommand = "claude"
@@ -87,7 +131,12 @@ local function buildCommand(prompt, uuid)
     .. " --output-format stream-json"
     .. " --verbose"
     .. " --include-partial-messages"
-    .. " --session-id " .. tostring(uuid)
+
+  if resume then
+    cmd ..= " --resume " .. tostring(uuid)
+  else
+    cmd ..= " --session-id " .. tostring(uuid)
+  end
 
   local model = noctalia.getConfig("model")
   if type(model) == "string" and model ~= "" then
@@ -222,6 +271,20 @@ local function header()
   })
 end
 
+local function resumeAffordance()
+  if #messages ~= 0 or streaming or persistedId == nil or sessionId ~= nil then
+    return nil
+  end
+  return ui.row({ align = "center", gap = 8 }, {
+    ui.button({ text = "Resume last chat", variant = "ghost", onClick = "onResumeLast" }),
+    ui.label({
+      text = "continues your previous conversation",
+      color = "on_surface_variant",
+      fontSize = 11,
+    }),
+  })
+end
+
 local function composer()
   local buttonText = "Send"
   local buttonVariant = "primary"
@@ -246,18 +309,23 @@ local function composer()
 end
 
 render = function()
-  panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 10, align = "stretch" }, {
+  local children = {
     header(),
-    messageList(),
-    composer(),
-  }))
+  }
+  local resumeRow = resumeAffordance()
+  if resumeRow ~= nil then
+    table.insert(children, resumeRow)
+  end
+  table.insert(children, messageList())
+  table.insert(children, composer())
+  panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 10, align = "stretch" }, children))
 end
 
 -- ── CALLBACKS ─────────────────────────────────────────────────────────────
 
 -- Called from the runStream closure (not by name from UI). The streamId guard
 -- drops buffered lines that arrive after a stop or a newer send.
-local function handleLine(streamId, line)
+local function handleLine(streamId, line, wasResume)
   local ok, perr = pcall(function()
     if streamId ~= activeStreamId or not streaming then
       return
@@ -351,11 +419,22 @@ local function handleLine(streamId, line)
             end
             msg.text ..= diagTail(5)
           end
+          if wasResume then
+            sessionId = nil
+            hasSession = false
+            clearPersistedSessionId()
+            if msg.text ~= "" then
+              msg.text ..= "\n"
+            end
+            msg.text ..= "Session could not be resumed - starting a new chat on next send."
+          end
         else
           msg.status = "done"
           if resultText ~= "" then
             msg.text = resultText
           end
+          hasSession = true
+          persistSessionId(currentUuid)
         end
       end
       render()
@@ -387,9 +466,17 @@ local function doSubmit(text)
   end
   appendMessage("user", trimmed)
   local assistantMessage = appendMessage("assistant", "", "streaming")
-  local uuid = newUuid()
+  local uuid
+  local resume = false
+  if sessionId ~= nil and hasSession then
+    uuid = sessionId
+    resume = true
+  else
+    uuid = newUuid()
+    sessionId = uuid
+    hasSession = false
+  end
   currentUuid = uuid
-  sessionId = uuid
   diagBuffer = {}
   lastLineAt = os.time()
   messageStartSeen = false
@@ -401,8 +488,8 @@ local function doSubmit(text)
   panel.setWantsSecondTicks(true)
   render()
 
-  local ok = noctalia.runStream(buildCommand(trimmed, uuid), function(line)
-    handleLine(streamId, line)
+  local ok = noctalia.runStream(buildCommand(trimmed, uuid, resume), function(line)
+    handleLine(streamId, line, resume)
   end)
   if not ok then
     assistantMessage.status = "error"
@@ -440,11 +527,19 @@ function onStop()
   render()
 end
 
+function onResumeLast()
+  sessionId = persistedId
+  hasSession = true
+  render()
+end
+
 function onNewChat()
   messages = {}
   msgCounter = 0
   sessionId = nil
+  hasSession = false
   currentUuid = nil
+  persistedId = nil
   diagBuffer = {}
   streaming = false
   activeStreamId += 1
