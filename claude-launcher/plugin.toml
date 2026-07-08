@@ -1,0 +1,53 @@
+id = "gegnep/claude-launcher"
+name = "Claude Launcher"
+version = "0.1.0"
+min_noctalia = "5.0.0"
+author = "pengeg"
+license = "MIT"
+icon = "chat"
+description = "Streaming chat panel for Claude, backed by the Claude Code CLI (subscription auth). Not affiliated with Anthropic."
+tags = ["chat", "ai", "claude", "assistant"]
+dependencies = []
+
+[[panel]]
+id = "chat"
+entry = "panel.luau"
+width = 420
+height = 560
+placement = "floating"
+position = "center"
+open_near_click = true
+
+[[setting]]
+key = "claude_command"
+type = "string"
+label = "Claude command"
+description = "Path or name of the claude binary (point at a wrapper to sandbox it)"
+default = "claude"
+
+[[setting]]
+key = "model"
+type = "string"
+label = "Model"
+description = "Passed as --model when non-empty; empty uses the CLI default"
+default = ""
+
+[[setting]]
+key = "effort"
+type = "select"
+label = "Effort"
+description = "Passed as --effort when non-empty"
+default = ""
+options = [
+  { value = "", label = "default" },
+  { value = "low", label = "low" },
+  { value = "medium", label = "medium" },
+  { value = "high", label = "high" },
+]
+
+[[setting]]
+key = "allow_tools"
+type = "bool"
+label = "Allow tools"
+description = "Off (default): claude runs with all tools disabled. On: claude's default tool behavior."
+default = false
