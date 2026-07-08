@@ -1,7 +1,7 @@
 From f915939323c1865807b6a583e93e6c633b91cafa Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Wed, 8 Jul 2026 00:46:02 -0400
-Subject: [PATCH 4/4] fix(plugins): reclaim stream slots when the process exits
+Subject: [PATCH 4/5] fix(plugins): reclaim stream slots when the process exits
 
 runStream slots (kMaxStreamsPerHost = 4) were only released on host
 teardown, so a plugin invoking short-lived streaming commands hit the

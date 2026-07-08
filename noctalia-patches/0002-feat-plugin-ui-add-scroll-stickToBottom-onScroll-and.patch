@@ -1,7 +1,7 @@
 From 09f842a3d4922ae4595c5605ea22a2ca2c776edc Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Tue, 7 Jul 2026 23:54:21 -0400
-Subject: [PATCH 2/4] feat(plugin-ui): add scroll stickToBottom, onScroll and
+Subject: [PATCH 2/5] feat(plugin-ui): add scroll stickToBottom, onScroll and
  scrollToBottomRev props
 
 Chat-style plugin panels need follow-scroll while streaming content,
