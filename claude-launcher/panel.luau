@@ -89,6 +89,19 @@ local function workspaceDir()
   return statePath() .. "/workspace"
 end
 
+-- Verified against claude CLI v2.1.201 project dir naming; other special chars unverified - transcripts_dir setting is the escape hatch.
+local function projectSlug(path)
+  return tostring(path or ""):gsub("[/%.]", "-")
+end
+
+local function transcriptsDir()
+  local cfg = noctalia.getConfig("transcripts_dir")
+  if type(cfg) == "string" and noctalia.string.trim(cfg) ~= "" then
+    return noctalia.expandPath(cfg)
+  end
+  return noctalia.expandPath("~/.claude/projects/") .. projectSlug(workspaceDir())
+end
+
 local function indexPath()
   return statePath() .. "/index.json"
 end
@@ -311,6 +324,76 @@ local function appendMessage(role, text, status)
   }
   table.insert(messages, message)
   return message
+end
+
+local function parseTranscript(text, keyPrefix)
+  local result = {}
+  local acc = { text = "", thinking = "" }
+  local count = 0
+
+  local function nextKey()
+    count += 1
+    return tostring(keyPrefix or "hist") .. "-" .. count
+  end
+
+  local function appendParsed(role, msgText, thinking)
+    if msgText == "" and thinking == "" then
+      return
+    end
+    table.insert(result, {
+      role = role,
+      text = msgText,
+      thinking = thinking,
+      thinkingOpen = false,
+      status = "done",
+      key = nextKey(),
+    })
+  end
+
+  local function flushAssistant()
+    appendParsed("assistant", acc.text, acc.thinking)
+    acc = { text = "", thinking = "" }
+  end
+
+  for line in string.gmatch(tostring(text or "") .. "\n", "([^\n]*)\n") do
+    local row = nil
+    if line ~= "" then
+      row = noctalia.json.decode(line)
+    end
+
+    if type(row) == "table" and row.type == "assistant" then
+      local message = row.message
+      local content = type(message) == "table" and message.content or nil
+      if type(content) == "table" then
+        for _, block in ipairs(content) do
+          if type(block) == "table" then
+            if block.type == "text" and type(block.text) == "string" then
+              acc.text ..= block.text
+            elseif block.type == "thinking" and type(block.thinking) == "string" then
+              acc.thinking ..= block.thinking
+            end
+          end
+        end
+      else
+        flushAssistant()
+      end
+    else
+      flushAssistant()
+      if type(row) == "table" and row.type == "user" then
+        local message = row.message
+        local content = type(message) == "table" and message.content or nil
+        if type(content) == "string" then
+          appendParsed("user", content, "")
+        end
+      end
+    end
+  end
+  flushAssistant()
+
+  while #result > 100 do
+    table.remove(result, 1)
+  end
+  return result
 end
 
 local function sessionPolicy()
@@ -595,7 +678,42 @@ local function openChatCallback(chat)
     diagBuffer = {}
     view = "chat"
     renamingChatId = nil
-    -- Phase P8: reload the saved transcript for this chat here.
+    local ok, err = pcall(function()
+      local path = transcriptsDir() .. "/" .. chat.id .. ".jsonl"
+      local info = noctalia.fileInfo(path)
+      if info ~= nil and not info.isDir then
+        if info.size < 131072 then
+          local content = noctalia.readFile(path)
+          if type(content) == "string" then
+            local t0 = os.clock()
+            messages = parseTranscript(content, "hist-" .. chat.id:sub(1, 8))
+            msgCounter = #messages
+            noctalia.log(string.format(
+              "Claude launcher: transcript reload size=%d bytes parse_ms=%.3f",
+              info.size,
+              (os.clock() - t0) * 1000
+            ))
+          end
+        else
+          messages = {
+            {
+              role = "assistant",
+              text = "(history too large to reload - the conversation continues from here)",
+              thinking = "",
+              thinkingOpen = false,
+              status = "done",
+              key = "hist-" .. chat.id:sub(1, 8) .. "-1",
+            },
+          }
+          msgCounter = #messages
+        end
+      end
+    end)
+    if not ok then
+      noctalia.log("Claude launcher: transcript reload failed: " .. tostring(err))
+      messages = {}
+      msgCounter = 0
+    end
     render()
   end
   return name

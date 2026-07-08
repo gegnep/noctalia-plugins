@@ -26,6 +26,13 @@ description = "Path or name of the claude binary (point at a wrapper to sandbox 
 default = "claude"
 
 [[setting]]
+key = "transcripts_dir"
+type = "folder"
+label = "Transcripts directory"
+description = "Claude projects dir used to reload past conversations; empty auto-derives from the workspace path (sandboxed claude wrappers must set this explicitly)"
+default = ""
+
+[[setting]]
 key = "model"
 type = "string"
 label = "Model"

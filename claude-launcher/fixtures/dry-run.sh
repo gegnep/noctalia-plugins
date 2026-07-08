@@ -24,5 +24,24 @@ run_fixture() {
   trap - EXIT
 }
 
+run_transcript_fixture() {
+  fixture=$1
+  tmp=$(mktemp --suffix=.luau)
+  trap 'rm -f "$tmp"' EXIT
+  {
+    cat "$dir/harness-prelude.luau"
+    cat "$dir/../panel.luau"
+    printf 'TRANSCRIPT_TEXT = [==[\n'
+    cat "$fixture"
+    printf '\n]==]\n'
+    cat "$dir/harness-feeder-transcript.luau"
+  } > "$tmp"
+  printf '%s: ' "$(basename "$fixture")"
+  $LUAU "$tmp"
+  rm -f "$tmp"
+  trap - EXIT
+}
+
 run_fixture "$dir/stream-dump-partial.jsonl"
 run_fixture "$dir/stream-dump-plain.jsonl"
+run_transcript_fixture "$dir/transcript-sample.jsonl"
