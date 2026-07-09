@@ -547,8 +547,10 @@ function effectiveModel()
   if overrideModel ~= "" then
     return overrideModel
   end
+  -- "auto" = the settings-select sentinel for "first in list" (the manifest
+  -- parser drops options with empty values, so "" can't be selected there).
   local configured = noctalia.getConfig("model")
-  if type(configured) == "string" and configured ~= "" then
+  if type(configured) == "string" and configured ~= "" and configured ~= "auto" then
     for _, alias in ipairs(availableModels()) do
       if alias == configured then
         return configured
@@ -563,7 +565,7 @@ function effectiveEffort()
     return overrideEffort
   end
   local configured = noctalia.getConfig("effort")
-  if type(configured) == "string" and configured ~= "" then
+  if type(configured) == "string" and configured ~= "" and configured ~= "auto" then
     return configured
   end
   return "high"

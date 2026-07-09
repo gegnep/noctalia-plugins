@@ -37,9 +37,9 @@ key = "model"
 type = "select"
 label = "Default model"
 description = "Model new chats start with; custom aliases from the Models list are pickable per-chat but only via 'First in list' here"
-default = ""
+default = "auto"
 options = [
-  { value = "", label = "First in list" },
+  { value = "auto", label = "First in list" },
   { value = "sonnet", label = "Sonnet" },
   { value = "opus", label = "Opus" },
   { value = "haiku", label = "Haiku" },
@@ -57,10 +57,10 @@ default = ["sonnet", "opus", "haiku", "fable"]
 key = "effort"
 type = "select"
 label = "Effort"
-description = "Default reasoning level for new chats; empty seeds the picker with High"
-default = ""
+description = "Default reasoning level for new chats"
+default = "auto"
 options = [
-  { value = "", label = "unset" },
+  { value = "auto", label = "Default (High)" },
   { value = "low", label = "Low" },
   { value = "medium", label = "Medium" },
   { value = "high", label = "High" },
