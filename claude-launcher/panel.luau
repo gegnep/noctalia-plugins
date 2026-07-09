@@ -48,9 +48,9 @@ local jumpRev = 0
 local renamingChatId = nil
 local pendingDeleteChatId = nil
 
--- Claude.ai-style inline model picker: closed shows a single pill button,
--- open expands an accordion column of options in place (no floating popup
--- support in this framework - see modelPicker() in the UI section).
+-- Claude.ai-style model control: a pill in the composer toolbar; its menu
+-- opens upward as a card between the message area and the composer (no
+-- floating popup support in this framework - see modelMenu()).
 local modelPickerOpen = false
 
 -- Bumped whenever the composer needs to be cleared: ui.input is uncontrolled,
@@ -924,19 +924,10 @@ local function header()
   local children = {
     ui.label({ text = "Claude", fontSize = 16, fontWeight = "bold", color = "on_surface" }),
   }
+  -- Model/effort live in the composer pill now; the header only counts.
   if #messages > 0 then
-    local segments = {}
-    local model = effectiveModel()
-    table.insert(segments, modelInfo(model).label)
-    if modelInfo(model).effortKind == "levels" then
-      local effort = effectiveEffort()
-      table.insert(segments, EFFORT_LABELS[effort] or effort)
-    elseif effectiveEffort() ~= "off" then
-      table.insert(segments, "Extended")
-    end
-    table.insert(segments, tostring(#messages) .. " msgs")
     table.insert(children, ui.label({
-      text = table.concat(segments, " \194\183 "),
+      text = tostring(#messages) .. " msgs",
       fontSize = 12,
       color = "on_surface_variant",
     }))
@@ -948,6 +939,21 @@ local function header()
   end
   table.insert(children, ui.button({ glyph = "plus", variant = "ghost", onClick = "onNewChat" }))
   return ui.row({ align = "center", gap = 8 }, children)
+end
+
+-- Pill text mirrors claude.ai's composer control: model name plus the
+-- reasoning state. (Defined before composer(), which closes over it.)
+local function modelPillText()
+  local currentModel = effectiveModel()
+  local label = modelInfo(currentModel).label
+  if modelInfo(currentModel).effortKind == "toggle" then
+    if effectiveEffort() ~= "off" then
+      return label .. " \194\183 Extended"
+    end
+    return label
+  end
+  local effort = effectiveEffort()
+  return label .. " \194\183 " .. (EFFORT_LABELS[effort] or effort)
 end
 
 local function composer()
@@ -973,65 +979,42 @@ local function composer()
       }),
       sendButton,
     }),
-    ui.label({
-      text = "Enter to send \194\183 Shift+Enter for a new line",
-      color = "on_surface_variant",
-      fontSize = 11,
+    -- Toolbar under the input, claude.ai style: model pill left, key hint right.
+    ui.row({ align = "center", gap = 8 }, {
+      ui.button({
+        text = modelPillText(),
+        fontSize = 12,
+        glyph = modelPickerOpen and "chevron-down" or "chevron-up",
+        glyphSize = 12,
+        variant = "ghost",
+        enabled = not streaming,
+        onClick = "onToggleModelPicker",
+      }),
+      ui.spacer({ flexGrow = 1 }),
+      ui.label({
+        text = "Enter to send \194\183 Shift+Enter for a new line",
+        color = "on_surface_variant",
+        fontSize = 11,
+      }),
     }),
   })
 end
 
--- Claude.ai-style inline model picker. Closed: a compact centered row with
--- a pill button (label + chevron) next to the reasoning control. Open: an
--- accordion column of model options (button + description) replaces the
--- pill, with the reasoning control still visible underneath - no floating
--- popup, since this framework has no z-order for that.
-local function modelPicker()
+-- The model menu opens UPWARD from the composer toolbar as a card between
+-- the message area and the composer; the message area's flexGrow absorbs
+-- its height, so it can never clip against the composer. (No floating
+-- popup - the framework has no z-order for plugins.)
+local function modelMenu()
   local models = availableModels()
   local currentModel = effectiveModel()
   local currentEffort = effectiveEffort()
   local kind = modelInfo(currentModel).effortKind
 
-  local reasoningRow
-  if kind == "levels" then
-    reasoningRow = ui.row({ gap = 6, align = "center" }, {
-      ui.select({
-        options = { "Low", "Medium", "High", "X-High", "Max" },
-        selectedIndex = selectIndex(EFFORT_LEVELS, currentEffort),
-        enabled = not streaming,
-        onChange = "onEffortChanged",
-      }),
-    })
-  else
-    reasoningRow = ui.row({ gap = 6, align = "center" }, {
-      ui.label({ text = "Extended thinking", fontSize = 12, color = "on_surface_variant" }),
-      ui.toggle({
-        checked = currentEffort ~= "off",
-        enabled = not streaming,
-        onChange = "onThinkingToggled",
-      }),
-    })
-  end
-
-  local toggleButton = ui.button({
-    text = modelInfo(currentModel).label,
-    glyph = modelPickerOpen and "chevron-up" or "chevron-down",
-    variant = "ghost",
-    onClick = "onToggleModelPicker",
-  })
-
-  if not modelPickerOpen then
-    return ui.row({ gap = 8, align = "center", justify = "center" }, {
-      toggleButton,
-      reasoningRow,
-    })
-  end
-
-  local optionRows = { toggleButton }
+  local rows = {}
   for _, alias in ipairs(models) do
     local info = modelInfo(alias)
     local isSelected = alias == currentModel
-    table.insert(optionRows, ui.button({
+    table.insert(rows, ui.button({
       text = info.label,
       glyph = isSelected and "check" or nil,
       variant = "ghost",
@@ -1039,38 +1022,59 @@ local function modelPicker()
       onClick = modelPickCallback(alias),
     }))
     if info.desc ~= nil then
-      table.insert(optionRows, ui.label({
-        text = info.desc,
-        fontSize = 11,
-        color = "on_surface_variant",
-        maxWidth = 280,
+      table.insert(rows, ui.row({ paddingH = 10 }, {
+        ui.label({ text = info.desc, fontSize = 11, color = "on_surface_variant/0.8", maxWidth = 300 }),
       }))
     end
   end
 
-  local children = {
-    ui.column({ gap = 2, align = "stretch", width = 300 }, optionRows),
-  }
-  if kind == "toggle" then
-    table.insert(children, ui.label({
-      text = "Extended thinking streams the model's reasoning before it answers",
-      fontSize = 11,
-      color = "on_surface_variant",
+  -- Reasoning lives inside the menu, claude.ai style.
+  table.insert(rows, ui.spacer({ height = 6 }))
+  if kind == "levels" then
+    table.insert(rows, ui.row({ align = "center", justify = "space_between", paddingH = 10 }, {
+      ui.label({ text = "Reasoning", fontSize = 12, color = "on_surface_variant" }),
+      ui.select({
+        options = { "Low", "Medium", "High", "X-High", "Max" },
+        selectedIndex = selectIndex(EFFORT_LEVELS, currentEffort),
+        enabled = not streaming,
+        onChange = "onEffortChanged",
+      }),
+    }))
+  else
+    table.insert(rows, ui.row({ align = "center", justify = "space_between", paddingH = 10 }, {
+      ui.label({ text = "Extended thinking", fontSize = 12, color = "on_surface_variant" }),
+      ui.toggle({
+        checked = currentEffort ~= "off",
+        enabled = not streaming,
+        onChange = "onThinkingToggled",
+      }),
+    }))
+    table.insert(rows, ui.row({ paddingH = 10 }, {
+      ui.label({
+        text = "Streams the model's reasoning before it answers",
+        fontSize = 11,
+        color = "on_surface_variant/0.8",
+        maxWidth = 300,
+      }),
     }))
   end
-  table.insert(children, reasoningRow)
 
-  return ui.column({ gap = 8, align = "center" }, children)
+  return ui.column({
+    key = "model-menu",
+    fill = "surface_variant/0.4",
+    radius = 12,
+    paddingH = 6,
+    paddingV = 8,
+    gap = 2,
+    align = "stretch",
+  }, rows)
 end
 
--- Shown in place of the message list before the first message exists; the
--- model/effort switchers live here instead of a permanent chrome row once a
--- chat has messages (the header caption reports their values then).
+-- Shown in place of the message list before the first message exists.
 local function emptyState()
   return ui.column({ key = "empty-state", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
     ui.glyph({ name = "sparkles", size = 48, color = "on_surface_variant" }),
     ui.label({ text = "Ask Claude anything", color = "on_surface_variant", fontSize = 12 }),
-    modelPicker(),
   })
 end
 
@@ -1090,6 +1094,9 @@ render = function()
       table.insert(children, ui.row({ key = "jump-pill", justify = "center" }, {
         ui.button({ glyph = "chevron-down", variant = "ghost", onClick = "onJumpToLatest" }),
       }))
+    end
+    if modelPickerOpen and not streaming then
+      table.insert(children, modelMenu())
     end
     table.insert(children, composer())
   end
