@@ -1018,6 +1018,10 @@ local function modelMenu()
     local info = modelInfo(alias)
     local isSelected = alias == currentModel
     table.insert(rows, ui.button({
+      -- Selection-dependent key: an absent glyph prop never CLEARS a glyph on
+      -- a retained node, so a once-checked button would keep its check mark
+      -- forever. Flipping the key recreates the control in the right state.
+      key = "model-opt-" .. alias .. (isSelected and "-sel" or ""),
       text = info.label,
       glyph = isSelected and "check" or nil,
       variant = "ghost",
@@ -1078,7 +1082,7 @@ end
 -- Shown in place of the message list before the first message exists.
 local function emptyState()
   return ui.column({ key = "empty-state", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
-    ui.glyph({ name = "sparkles", size = 48, color = "on_surface_variant" }),
+    ui.glyph({ name = "asterisk", size = 48, color = "on_surface_variant" }),
     ui.label({ text = "Ask Claude anything", color = "on_surface_variant", fontSize = 12 }),
   })
 end
