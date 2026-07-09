@@ -1,4 +1,4 @@
-From 09f842a3d4922ae4595c5605ea22a2ca2c776edc Mon Sep 17 00:00:00 2001
+From 5ec59726dc885138b0744c22aec6a35ea61eedc1 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Tue, 7 Jul 2026 23:54:21 -0400
 Subject: [PATCH 2/5] feat(plugin-ui): add scroll stickToBottom, onScroll and
@@ -13,11 +13,11 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ---
  src/ui/controls/scroll_view.cpp | 13 +++++++++++++
  src/ui/controls/scroll_view.h   |  3 +++
- src/ui/ui_tree_reconciler.cpp   | 21 ++++++++++++++++++++-
- 3 files changed, 36 insertions(+), 1 deletion(-)
+ src/ui/ui_tree_reconciler.cpp   | 27 +++++++++++++++++++++++----
+ 3 files changed, 39 insertions(+), 4 deletions(-)
 
 diff --git a/src/ui/controls/scroll_view.cpp b/src/ui/controls/scroll_view.cpp
-index 1b084e7..4e077cc 100644
+index 1b084e7bd..4e077cc91 100644
 --- a/src/ui/controls/scroll_view.cpp
 +++ b/src/ui/controls/scroll_view.cpp
 @@ -264,6 +264,8 @@ void ScrollView::bindState(ScrollViewState* state) {
@@ -55,7 +55,7 @@ index 1b084e7..4e077cc 100644
    const float scrollbarX = m_viewportPaddingH + m_viewportWidth - Style::scrollbarWidth;
    m_scrollbar->setPosition(scrollbarX, m_viewportPaddingV);
 diff --git a/src/ui/controls/scroll_view.h b/src/ui/controls/scroll_view.h
-index fe2ce5a..ef706aa 100644
+index fe2ce5ab8..ef706aa89 100644
 --- a/src/ui/controls/scroll_view.h
 +++ b/src/ui/controls/scroll_view.h
 @@ -25,6 +25,8 @@ public:
@@ -76,16 +76,22 @@ index fe2ce5a..ef706aa 100644
    ColorSpec m_backgroundFill = clearColorSpec();
    ColorSpec m_backgroundBorder = clearColorSpec();
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index 05826dd..1e8b2a0 100644
+index f46aa6b05..135ab99e2 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
-@@ -300,7 +300,8 @@ namespace ui {
-       static const std::unordered_set<std::string> kScroll = {"width",       "height", "flexGrow", "opacity",
-                                                               "visible",     "fill",   "radius",   "border",
-                                                               "borderWidth", "gap",    "padding",  "paddingH",
+@@ -297,10 +297,11 @@ namespace ui {
+                                                               "value",   "enabled", "onChange", "onDragEnd"};
+       static const std::unordered_set<std::string> kToggle = {"width",   "height",  "flexGrow", "opacity",
+                                                               "visible", "checked", "enabled",  "onChange"};
+-      static const std::unordered_set<std::string> kScroll = {"width",       "height", "flexGrow", "opacity",
+-                                                              "visible",     "fill",   "radius",   "border",
+-                                                              "borderWidth", "gap",    "padding",  "paddingH",
 -                                                              "paddingV",    "align",  "justify"};
-+                                                              "paddingV",    "align",  "justify",  "stickToBottom",
-+                                                              "onScroll",    "scrollToBottomRev"};
++      static const std::unordered_set<std::string> kScroll = {
++          "width",    "height", "flexGrow",    "opacity",       "visible",  "fill",
++          "radius",   "border", "borderWidth", "gap",           "padding",  "paddingH",
++          "paddingV", "align",  "justify",     "stickToBottom", "onScroll", "scrollToBottomRev"
++      };
  
        if (type == "column" || type == "row") {
          return kFlex;

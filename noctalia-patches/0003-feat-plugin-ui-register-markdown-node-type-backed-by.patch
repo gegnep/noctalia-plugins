@@ -1,4 +1,4 @@
-From c4cc32961efb9507abd1a0440239e4a504f47ed0 Mon Sep 17 00:00:00 2001
+From 3420743bee9b3a83129342035de85055ad843176 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Tue, 7 Jul 2026 23:54:53 -0400
 Subject: [PATCH 3/5] feat(plugin-ui): register markdown node type backed by
@@ -18,10 +18,10 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
  3 files changed, 33 insertions(+)
 
 diff --git a/meson.build b/meson.build
-index d7675f3..bfe32bc 100644
+index 51922b2a0..46b120b0f 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -1252,6 +1252,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
+@@ -1253,6 +1253,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
      'src/ui/controls/image.cpp',
      'src/ui/controls/input.cpp',
      'src/ui/controls/label.cpp',
@@ -29,7 +29,7 @@ index d7675f3..bfe32bc 100644
      'src/ui/controls/progress_bar.cpp',
      'src/ui/controls/scroll_view.cpp',
      'src/ui/controls/scrollbar.cpp',
-@@ -1262,6 +1263,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
+@@ -1263,6 +1264,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
      'src/ui/controls/toggle.cpp',
      'src/ui/controls/color_swatch_preview.cpp',
      'src/ui/app_icon_colorization.cpp',
@@ -37,7 +37,7 @@ index d7675f3..bfe32bc 100644
      'src/ui/palette.cpp',
      'src/ui/style.cpp',
      'src/core/timer_manager.cpp',
-@@ -1299,6 +1301,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
+@@ -1300,6 +1302,7 @@ ui_tree_reconciler_test = executable('ui_tree_reconciler_test',
      egl_dep,
      librsvg_dep,
      libwebp_dep,
@@ -46,7 +46,7 @@ index d7675f3..bfe32bc 100644
      stb_dep,
      xkbcommon_dep,
 diff --git a/src/scripting/ui_prelude.h b/src/scripting/ui_prelude.h
-index 1145e3c..aacc725 100644
+index 1145e3c5b..aacc7254e 100644
 --- a/src/scripting/ui_prelude.h
 +++ b/src/scripting/ui_prelude.h
 @@ -25,6 +25,7 @@ ui.progress = ctor("progress")
@@ -58,7 +58,7 @@ index 1145e3c..aacc725 100644
  ui.slider = ctor("slider")
  ui.toggle = ctor("toggle")
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index 1e8b2a0..57c0f2d 100644
+index 135ab99e2..733bc7369 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
 @@ -12,6 +12,7 @@
@@ -70,11 +70,11 @@ index 1e8b2a0..57c0f2d 100644
  #include "ui/controls/scroll_view.h"
  #include "ui/controls/select.h"
 @@ -289,6 +290,8 @@ namespace ui {
-                                                              "visible",  "value",    "placeholder", "fontSize",
-                                                              "enabled",  "password", "multiline",   "focus",
+                                                              "visible",  "value",    "placeholder",  "fontSize",
+                                                              "enabled",  "password", "multiline",    "focus",
                                                               "onChange", "onSubmit", "submitOnEnter"};
-+      static const std::unordered_set<std::string> kMarkdown = {"width", "height", "flexGrow", "opacity", "visible",
-+                                                                "text"};
++      static const std::unordered_set<std::string> kMarkdown = {"width",   "height",  "flexGrow",
++                                                                "opacity", "visible", "text"};
        static const std::unordered_set<std::string> kSelect = {"width",       "height",  "flexGrow",      "opacity",
                                                                "visible",     "options", "selectedIndex", "enabled",
                                                                "placeholder", "onChange"};

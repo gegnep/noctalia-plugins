@@ -1,4 +1,4 @@
-From f915939323c1865807b6a583e93e6c633b91cafa Mon Sep 17 00:00:00 2001
+From 5f02ef90a0070a519ec5d574d5ecf2d96c2792e3 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Wed, 8 Jul 2026 00:46:02 -0400
 Subject: [PATCH 4/5] fix(plugins): reclaim stream slots when the process exits
@@ -17,7 +17,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
  1 file changed, 12 insertions(+), 1 deletion(-)
 
 diff --git a/src/scripting/luau_host.cpp b/src/scripting/luau_host.cpp
-index 9252e36..ccbff05 100644
+index 9252e36e2..ccbff050d 100644
 --- a/src/scripting/luau_host.cpp
 +++ b/src/scripting/luau_host.cpp
 @@ -1450,6 +1450,11 @@ void LuauHost::stateWatch(std::string key, int callbackRef) {

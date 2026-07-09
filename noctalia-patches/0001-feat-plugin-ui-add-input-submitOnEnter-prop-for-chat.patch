@@ -1,4 +1,4 @@
-From 1e72d18cfb7390de0973f860119d07c08705d180 Mon Sep 17 00:00:00 2001
+From 33abfe5218678c58ca30611211c2ccc39971a37d Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Tue, 7 Jul 2026 23:53:54 -0400
 Subject: [PATCH 1/5] feat(plugin-ui): add input submitOnEnter prop for
@@ -10,13 +10,13 @@ behavior (Enter inserts, Ctrl+Enter submits) is unchanged.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ---
- src/ui/controls/input.cpp     | 4 +++-
- src/ui/controls/input.h       | 4 ++++
- src/ui/ui_tree_reconciler.cpp | 5 ++++-
- 3 files changed, 11 insertions(+), 2 deletions(-)
+ src/ui/controls/input.cpp     |  4 +++-
+ src/ui/controls/input.h       |  4 ++++
+ src/ui/ui_tree_reconciler.cpp | 11 +++++++----
+ 3 files changed, 14 insertions(+), 5 deletions(-)
 
 diff --git a/src/ui/controls/input.cpp b/src/ui/controls/input.cpp
-index 3966f92..c8d97a7 100644
+index 3966f924c..c8d97a7b4 100644
 --- a/src/ui/controls/input.cpp
 +++ b/src/ui/controls/input.cpp
 @@ -529,6 +529,8 @@ void Input::setOnFocusGain(std::function<void()> callback) { m_onFocusGain = std
@@ -38,7 +38,7 @@ index 3966f92..c8d97a7 100644
          m_onSubmit(m_value);
          if (alive.expired()) {
 diff --git a/src/ui/controls/input.h b/src/ui/controls/input.h
-index 891bcd9..a8f7dd7 100644
+index 891bcd9e3..a8f7dd7d9 100644
 --- a/src/ui/controls/input.h
 +++ b/src/ui/controls/input.h
 @@ -57,6 +57,9 @@ public:
@@ -60,14 +60,20 @@ index 891bcd9..a8f7dd7 100644
    float m_controlHeight = Style::controlHeight;
    float m_horizontalPadding = Style::spaceMd;
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index 842232e..05826dd 100644
+index 842232ec0..f46aa6b05 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
-@@ -288,7 +288,7 @@ namespace ui {
-       static const std::unordered_set<std::string> kInput = {"width",    "height",   "flexGrow",    "opacity",
-                                                              "visible",  "value",    "placeholder", "fontSize",
-                                                              "enabled",  "password", "multiline",   "focus",
+@@ -285,10 +285,10 @@ namespace ui {
+       static const std::unordered_set<std::string> kGraph = {"width",   "height",    "flexGrow",   "opacity",
+                                                              "visible", "values",    "values2",    "color",
+                                                              "color2",  "lineWidth", "fillOpacity"};
+-      static const std::unordered_set<std::string> kInput = {"width",    "height",   "flexGrow",    "opacity",
+-                                                             "visible",  "value",    "placeholder", "fontSize",
+-                                                             "enabled",  "password", "multiline",   "focus",
 -                                                             "onChange", "onSubmit"};
++      static const std::unordered_set<std::string> kInput = {"width",    "height",   "flexGrow",     "opacity",
++                                                             "visible",  "value",    "placeholder",  "fontSize",
++                                                             "enabled",  "password", "multiline",    "focus",
 +                                                             "onChange", "onSubmit", "submitOnEnter"};
        static const std::unordered_set<std::string> kSelect = {"width",       "height",  "flexGrow",      "opacity",
                                                                "visible",     "options", "selectedIndex", "enabled",
