@@ -1,0 +1,13 @@
+# This file is auto-generated from */plugin.toml by tools/update-catalog.py.
+# Do not edit manually.
+
+[[plugin]]
+id = "gegnep/claude-launcher"
+name = "Claude Launcher"
+version = "0.1.0"
+author = "pengeg"
+license = "MIT"
+icon = "asterisk"
+description = "Streaming chat panel for Claude, backed by the Claude Code CLI (subscription auth). Not affiliated with Anthropic."
+min_noctalia = "5.0.0"
+tags = ["chat", "ai", "claude", "assistant"]

@@ -146,6 +146,11 @@ dedicated workspace under `$XDG_STATE_HOME/noctalia-claude-launcher/workspace`
 history is tracked in an index file under the same state directory, separate
 from Claude's own transcript files.
 
+`catalog.toml` (required for consuming this repo as a git plugin source) is
+auto-generated from `*/plugin.toml` — regenerate with
+`python3 tools/update-catalog.py` (CI also does this on push to `main`).
+Don't edit it by hand.
+
 History is commit-per-feature — see `git log` for how the panel evolved from
 a static mockup to full streaming, multi-turn sessions, and history
 management.

@@ -13,6 +13,7 @@
     {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
+          python3
           luau # standalone runner for fixture-driven parser tests (no noctalia needed)
           jq
           fd
