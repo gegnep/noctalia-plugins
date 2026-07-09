@@ -46,6 +46,9 @@ local view = "chat"
 local atBottom = true
 local jumpRev = 0
 local renamingChatId = nil
+-- Mirrors the rename input's live text (uncontrolled input; the save button
+-- can't read its buffer directly).
+local renameBuffer = ""
 local pendingDeleteChatId = nil
 
 -- Claude.ai-style model control: a pill in the composer toolbar; its menu
@@ -777,6 +780,7 @@ local function openChatCallback(chat)
     view = "chat"
     atBottom = true
     renamingChatId = nil
+    renameBuffer = ""
     pendingDeleteChatId = nil
     modelPickerOpen = false
     local ok, err = pcall(function()
@@ -820,13 +824,27 @@ local function openChatCallback(chat)
   return name
 end
 
+-- Pencil toggles rename mode: first press opens the editor, second press
+-- saves whatever was typed (or cancels when unchanged/empty). The button
+-- cannot read the uncontrolled input's buffer, so onRenameEdited mirrors it
+-- into renameBuffer (same pattern as the composer's send button).
 local function renameChatCallback(chat)
   local name = "onRenameChat_" .. chat.id:gsub("%W", "_")
   env[name] = function()
     if streaming then
       return
     end
-    renamingChatId = chat.id
+    if renamingChatId == chat.id then
+      local title = noctalia.string.trim(renameBuffer or "")
+      if title ~= "" and title ~= chat.title then
+        renameChat(chat.id, title)
+      end
+      renamingChatId = nil
+      renameBuffer = ""
+    else
+      renamingChatId = chat.id
+      renameBuffer = chat.title
+    end
     render()
   end
   return name
@@ -879,10 +897,15 @@ local function historyList()
         value = chat.title,
         focus = true,
         flexGrow = 1,
+        onChange = "onRenameEdited",
         onSubmit = "onRenameSubmit",
       })
     else
       titleControl = ui.button({
+        -- Keyed (as are the action icons below): the title control swaps
+        -- type between input and button, and unkeyed siblings get re-matched
+        -- in order with stale props (glyphs migrating between buttons).
+        key = "title-" .. chat.id,
         text = chat.title,
         variant = "ghost",
         flexGrow = 1,
@@ -900,12 +923,20 @@ local function historyList()
     }
     if pendingDeleteChatId == chat.id then
       table.insert(row, ui.label({ text = "delete?", color = "error", fontSize = 12 }))
-      table.insert(row, ui.button({ glyph = "check", variant = "primary", onClick = "onConfirmDeleteChat" }))
-      table.insert(row, ui.button({ glyph = "close", variant = "ghost", onClick = "onCancelDeleteChat" }))
+      table.insert(row, ui.button({ key = "confirm-" .. chat.id, glyph = "check", variant = "primary", onClick = "onConfirmDeleteChat" }))
+      table.insert(row, ui.button({ key = "cancel-" .. chat.id, glyph = "close", variant = "ghost", onClick = "onCancelDeleteChat" }))
     else
-      table.insert(row, ui.button({ glyph = "pencil", variant = "ghost", onClick = renameChatCallback(chat) }))
-      table.insert(row, ui.button({ glyph = "terminal", variant = "ghost", onClick = terminalChatCallback(chat) }))
-      table.insert(row, ui.button({ glyph = "trash", variant = "ghost", onClick = deleteChatCallback(chat) }))
+      local renaming = renamingChatId == chat.id
+      table.insert(row, ui.button({
+        -- Save affordance while renaming; key flips so the glyph swap is a
+        -- clean recreate rather than a stale-prop mutation.
+        key = "edit-" .. chat.id .. (renaming and "-save" or ""),
+        glyph = renaming and "check" or "pencil",
+        variant = renaming and "primary" or "ghost",
+        onClick = renameChatCallback(chat),
+      }))
+      table.insert(row, ui.button({ key = "term-" .. chat.id, glyph = "terminal", variant = "ghost", onClick = terminalChatCallback(chat) }))
+      table.insert(row, ui.button({ key = "del-" .. chat.id, glyph = "trash", variant = "ghost", onClick = deleteChatCallback(chat) }))
     end
 
     table.insert(rows, ui.row({ key = "chat-" .. chat.id, align = "center", gap = 6 }, row))
@@ -1484,6 +1515,10 @@ function onCancelDeleteChat()
   render()
 end
 
+function onRenameEdited(value)
+  renameBuffer = value
+end
+
 function onRenameSubmit(text)
   if streaming then
     return
@@ -1495,6 +1530,7 @@ function onRenameSubmit(text)
     end
   end
   renamingChatId = nil
+  renameBuffer = ""
   render()
 end
 
@@ -1515,6 +1551,7 @@ function onNewChat()
   view = "chat"
   atBottom = true
   renamingChatId = nil
+  renameBuffer = ""
   overrideModel = ""
   overrideEffort = ""
   modelPickerOpen = false
