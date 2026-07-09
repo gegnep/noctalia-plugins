@@ -13,8 +13,10 @@ native noctalia surfaces are unaffected.
 | 0004 stream slot reaping | Bugfix: `runStream` slots (cap 4 per host) were only released on host teardown — a plugin running short-lived streaming commands hit the cap after four runs and every later `runStream` returned false. Exited processes now mark their cancel token and the next `startStream` sweeps them. |
 | 0005 MarkdownView measure fix | Bugfix: the control only applied its wrap width to labels in `doLayout`, so measure reported single-line sizes and parent flexes under-allocated its height — sibling rows overlapped it (visible as garbled stacked text). Wrap width now also applied from measure constraints. |
 
-Upstream status: **local only — pending user review** (code + commit
-messages), then push + PR per `.github/PULL_REQUEST_TEMPLATE.md`.
+Upstream status: **submitted —
+[noctalia-dev/noctalia#3327](https://github.com/noctalia-dev/noctalia/pull/3327)**,
+awaiting review. These patch files match the PR branch exactly (rebased onto
+upstream main, clang-formatted per-commit).
 
 Consuming in a nixos flake (overlay on the noctalia package):
 

@@ -41,12 +41,11 @@ talks to the Anthropic API directly and never holds an API key.
 
 ### Requirements
 
-- A Noctalia v5 build that includes the five patches in
-  [`noctalia-patches/`](./noctalia-patches) — chat-style input submit,
-  follow-scroll, markdown rendering, and two stream/measure bugfixes. They're
-  additive and default-off, but claude-launcher depends on all five; an
-  upstream PR is pending, see the [patch table](./noctalia-patches/README.md)
-  for what each one adds.
+- A Noctalia v5 build that includes the plugin-UI patches from
+  [noctalia-dev/noctalia#3327](https://github.com/noctalia-dev/noctalia/pull/3327)
+  (in review). Until that lands, apply them locally — see
+  [`noctalia-patches/`](./noctalia-patches) for what each patch adds and how
+  to apply them.
 - The `claude` CLI (Claude Code), logged into a Pro/Max subscription.
 
 Auth follows whatever `claude_command` actually runs. If you point it at a
@@ -68,21 +67,6 @@ noctalia msg plugins enable gegnep/claude-launcher
 
 ```sh
 ln -sfn "$PWD/claude-launcher" ~/.local/share/noctalia/plugins/claude-launcher
-```
-
-**Patches**, applied via a nix overlay on the noctalia package:
-
-```nix
-# wherever the noctalia package is taken from its flake input:
-(noctalia-pkg.overrideAttrs (old: {
-  patches = (old.patches or [ ]) ++ [
-    ./noctalia-patches/0001-feat-plugin-ui-add-input-submitOnEnter-prop-for-chat.patch
-    ./noctalia-patches/0002-feat-plugin-ui-add-scroll-stickToBottom-onScroll-and.patch
-    ./noctalia-patches/0003-feat-plugin-ui-register-markdown-node-type-backed-by.patch
-    ./noctalia-patches/0004-fix-plugins-reclaim-stream-slots-when-the-process-ex.patch
-    ./noctalia-patches/0005-fix-ui-measure-MarkdownView-with-wrapped-label-sizes.patch
-  ];
-}))
 ```
 
 ### Usage
