@@ -48,6 +48,11 @@ local jumpRev = 0
 local renamingChatId = nil
 local pendingDeleteChatId = nil
 
+-- Claude.ai-style inline model picker: closed shows a single pill button,
+-- open expands an accordion column of options in place (no floating popup
+-- support in this framework - see modelPicker() in the UI section).
+local modelPickerOpen = false
+
 -- Bumped whenever the composer needs to be cleared: ui.input is uncontrolled,
 -- so the only way to reset its buffer is to recreate it under a new key.
 local inputRev = 0
@@ -514,10 +519,10 @@ end
 -- Known model aliases -> display label + reasoning capability. Aliases the
 -- user adds beyond these get their raw alias as label and level-based effort.
 local MODEL_INFO = {
-  sonnet = { label = "Sonnet", effortKind = "levels" },
-  opus = { label = "Opus", effortKind = "levels" },
-  haiku = { label = "Haiku", effortKind = "toggle" },
-  fable = { label = "Fable", effortKind = "levels" },
+  sonnet = { label = "Sonnet", effortKind = "levels", desc = "Balanced speed and capability for everyday work" },
+  opus = { label = "Opus", effortKind = "levels", desc = "Deep reasoning for complex, open-ended work" },
+  haiku = { label = "Haiku", effortKind = "toggle", desc = "Fastest responses, streams its thinking" },
+  fable = { label = "Fable", effortKind = "levels", desc = "Most capable model for the hardest problems" },
 }
 local EFFORT_LEVELS = { "low", "medium", "high", "xhigh", "max" }
 local EFFORT_LABELS = { low = "Low", medium = "Medium", high = "High", xhigh = "X-High", max = "Max" }
@@ -557,6 +562,25 @@ function effectiveEffort()
     return configured
   end
   return "high"
+end
+
+-- Per-model row in the open picker: mirrors onModelChanged's exact
+-- side-effects (including clearing an "off" toggle-effort override when
+-- switching to a levels-kind model), plus closing the accordion.
+local function modelPickCallback(alias)
+  local name = "onPickModel_" .. alias:gsub("%W", "_")
+  env[name] = function()
+    if streaming then
+      return
+    end
+    overrideModel = alias
+    if modelInfo(alias).effortKind == "levels" and overrideEffort == "off" then
+      overrideEffort = ""
+    end
+    modelPickerOpen = false
+    render()
+  end
+  return name
 end
 
 local function selectIndex(options, value)
@@ -753,6 +777,7 @@ local function openChatCallback(chat)
     atBottom = true
     renamingChatId = nil
     pendingDeleteChatId = nil
+    modelPickerOpen = false
     local ok, err = pcall(function()
       local path = transcriptsDir() .. "/" .. chat.id .. ".jsonl"
       local info = noctalia.fileInfo(path)
@@ -956,12 +981,13 @@ local function composer()
   })
 end
 
-local function switchers()
+-- Claude.ai-style inline model picker. Closed: a compact centered row with
+-- a pill button (label + chevron) next to the reasoning control. Open: an
+-- accordion column of model options (button + description) replaces the
+-- pill, with the reasoning control still visible underneath - no floating
+-- popup, since this framework has no z-order for that.
+local function modelPicker()
   local models = availableModels()
-  local modelLabels = {}
-  for _, alias in ipairs(models) do
-    table.insert(modelLabels, modelInfo(alias).label)
-  end
   local currentModel = effectiveModel()
   local currentEffort = effectiveEffort()
   local kind = modelInfo(currentModel).effortKind
@@ -969,7 +995,6 @@ local function switchers()
   local reasoningRow
   if kind == "levels" then
     reasoningRow = ui.row({ gap = 6, align = "center" }, {
-      ui.label({ text = "Reasoning", fontSize = 12, color = "on_surface_variant" }),
       ui.select({
         options = { "Low", "Medium", "High", "X-High", "Max" },
         selectedIndex = selectIndex(EFFORT_LEVELS, currentEffort),
@@ -988,18 +1013,54 @@ local function switchers()
     })
   end
 
-  return ui.column({ gap = 8, align = "center" }, {
-    ui.row({ gap = 6, align = "center" }, {
-      ui.label({ text = "Model", fontSize = 12, color = "on_surface_variant" }),
-      ui.select({
-        options = modelLabels,
-        selectedIndex = selectIndex(models, currentModel),
-        enabled = not streaming,
-        onChange = "onModelChanged",
-      }),
-    }),
-    reasoningRow,
+  local toggleButton = ui.button({
+    text = modelInfo(currentModel).label,
+    glyph = modelPickerOpen and "chevron-up" or "chevron-down",
+    variant = "ghost",
+    onClick = "onToggleModelPicker",
   })
+
+  if not modelPickerOpen then
+    return ui.row({ gap = 8, align = "center", justify = "center" }, {
+      toggleButton,
+      reasoningRow,
+    })
+  end
+
+  local optionRows = { toggleButton }
+  for _, alias in ipairs(models) do
+    local info = modelInfo(alias)
+    local isSelected = alias == currentModel
+    table.insert(optionRows, ui.button({
+      text = info.label,
+      glyph = isSelected and "check" or nil,
+      variant = "ghost",
+      selected = isSelected,
+      onClick = modelPickCallback(alias),
+    }))
+    if info.desc ~= nil then
+      table.insert(optionRows, ui.label({
+        text = info.desc,
+        fontSize = 11,
+        color = "on_surface_variant",
+        maxWidth = 280,
+      }))
+    end
+  end
+
+  local children = {
+    ui.column({ gap = 2, align = "stretch", width = 300 }, optionRows),
+  }
+  if kind == "toggle" then
+    table.insert(children, ui.label({
+      text = "Extended thinking streams the model's reasoning before it answers",
+      fontSize = 11,
+      color = "on_surface_variant",
+    }))
+  end
+  table.insert(children, reasoningRow)
+
+  return ui.column({ gap = 8, align = "center" }, children)
 end
 
 -- Shown in place of the message list before the first message exists; the
@@ -1009,7 +1070,7 @@ local function emptyState()
   return ui.column({ key = "empty-state", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
     ui.glyph({ name = "sparkles", size = 48, color = "on_surface_variant" }),
     ui.label({ text = "Ask Claude anything", color = "on_surface_variant", fontSize = 12 }),
-    switchers(),
+    modelPicker(),
   })
 end
 
@@ -1306,15 +1367,11 @@ function onJumpToLatest()
   render()
 end
 
-function onModelChanged(index, _text)
-  local alias = availableModels()[(tonumber(index) or 0) + 1]
-  if alias == nil then
+function onToggleModelPicker()
+  if streaming then
     return
   end
-  overrideModel = alias
-  if modelInfo(alias).effortKind == "levels" and overrideEffort == "off" then
-    overrideEffort = ""
-  end
+  modelPickerOpen = not modelPickerOpen
   render()
 end
 
@@ -1387,6 +1444,7 @@ function onToggleHistory()
     renamingChatId = nil
   end
   pendingDeleteChatId = nil
+  modelPickerOpen = false
   render()
 end
 
@@ -1437,6 +1495,7 @@ function onNewChat()
   renamingChatId = nil
   overrideModel = ""
   overrideEffort = ""
+  modelPickerOpen = false
   activeStreamId += 1
   deltaCount = 0
   composerBuffer = ""
