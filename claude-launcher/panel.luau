@@ -950,33 +950,57 @@ local function historyList(visible)
   return ui.scroll({ key = "history-scroll", flexGrow = 1, gap = 6, visible = visible }, rows)
 end
 
+-- One always-mounted header: view-dependent controls are keyed and toggled
+-- with visible instead of being conditionally built, so switching views
+-- never recreates them (recreation reads as a flash).
 local function header()
-  if view == "history" then
-    return ui.row({ align = "center", gap = 8 }, {
-      ui.button({ glyph = "arrow-left", variant = "ghost", onClick = "onToggleHistory" }),
-      ui.label({ text = "History", fontSize = 16, fontWeight = "bold", color = "on_surface" }),
-      ui.spacer({ flexGrow = 1 }),
-    })
-  end
-
-  local children = {
-    ui.label({ text = "Claude", fontSize = 16, fontWeight = "bold", color = "on_surface" }),
-  }
-  -- Model/effort live in the composer pill now; the header only counts.
-  if #messages > 0 then
-    table.insert(children, ui.label({
+  local inChat = view == "chat"
+  return ui.row({ key = "header", align = "center", gap = 8 }, {
+    ui.button({
+      key = "hdr-back",
+      glyph = "arrow-left",
+      variant = "ghost",
+      visible = not inChat,
+      onClick = "onToggleHistory",
+    }),
+    ui.label({
+      key = "hdr-title",
+      text = inChat and "Claude" or "History",
+      fontSize = 16,
+      fontWeight = "bold",
+      color = "on_surface",
+    }),
+    -- Model/effort live in the composer pill; the header only counts.
+    ui.label({
+      key = "hdr-count",
       text = tostring(#messages) .. " msgs",
       fontSize = 12,
       color = "on_surface_variant",
-    }))
-  end
-  table.insert(children, ui.spacer({ flexGrow = 1 }))
-  table.insert(children, ui.button({ glyph = "history", variant = "ghost", onClick = "onToggleHistory" }))
-  if #messages > 0 then
-    table.insert(children, ui.button({ glyph = "copy", variant = "ghost", onClick = "onCopyChat" }))
-  end
-  table.insert(children, ui.button({ glyph = "plus", variant = "ghost", onClick = "onNewChat" }))
-  return ui.row({ align = "center", gap = 8 }, children)
+      visible = inChat and #messages > 0,
+    }),
+    ui.spacer({ flexGrow = 1 }),
+    ui.button({
+      key = "hdr-history",
+      glyph = "history",
+      variant = "ghost",
+      visible = inChat,
+      onClick = "onToggleHistory",
+    }),
+    ui.button({
+      key = "hdr-copy",
+      glyph = "copy",
+      variant = "ghost",
+      visible = inChat and #messages > 0,
+      onClick = "onCopyChat",
+    }),
+    ui.button({
+      key = "hdr-new",
+      glyph = "plus",
+      variant = "ghost",
+      visible = inChat,
+      onClick = "onNewChat",
+    }),
+  })
 end
 
 -- Pill text mirrors claude.ai's composer control: model name plus the
