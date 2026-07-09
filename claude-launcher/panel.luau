@@ -147,6 +147,7 @@ local function normalizeIndex(value)
       table.insert(index.chats, {
         id = chat.id,
         title = type(chat.title) == "string" and chat.title or "Untitled chat",
+        renamed = chat.renamed == true,
         createdAt = type(chat.createdAt) == "number" and chat.createdAt or os.time(),
         updatedAt = type(chat.updatedAt) == "number" and chat.updatedAt or os.time(),
       })
@@ -244,6 +245,7 @@ local function renameChat(id, title)
   for _, chat in ipairs(historyIndex.chats) do
     if chat.id == id then
       chat.title = title
+      chat.renamed = true
       saveIndex(historyIndex)
       return
     end
@@ -878,9 +880,9 @@ local function deleteChatCallback(chat)
   return name
 end
 
-local function historyList()
+local function historyList(visible)
   if #historyIndex.chats == 0 then
-    return ui.scroll({ key = "history-scroll", flexGrow = 1, gap = 6 }, {
+    return ui.scroll({ key = "history-scroll", flexGrow = 1, gap = 6, visible = visible, }, {
       ui.column({ key = "history-empty", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
         ui.glyph({ name = "history", size = 48, color = "on_surface_variant" }),
         ui.label({ text = "No chats yet", color = "on_surface_variant", fontSize = 12 }),
@@ -915,12 +917,16 @@ local function historyList()
 
     local row = {
       titleControl,
-      ui.label({
-        text = noctalia.formatTime("%b %d %H:%M", chat.updatedAt),
-        color = "on_surface_variant",
-        fontSize = 11,
-      }),
     }
+    if chat.renamed then
+      -- Persistent marker: this chat carries a custom title.
+      table.insert(row, ui.glyph({ name = "pencil", size = 11, color = "on_surface_variant/0.7" }))
+    end
+    table.insert(row, ui.label({
+      text = noctalia.formatTime("%b %d %H:%M", chat.updatedAt),
+      color = "on_surface_variant",
+      fontSize = 11,
+    }))
     if pendingDeleteChatId == chat.id then
       table.insert(row, ui.label({ text = "delete?", color = "error", fontSize = 12 }))
       table.insert(row, ui.button({ key = "confirm-" .. chat.id, glyph = "check", variant = "primary", onClick = "onConfirmDeleteChat" }))
@@ -941,7 +947,7 @@ local function historyList()
 
     table.insert(rows, ui.row({ key = "chat-" .. chat.id, align = "center", gap = 6 }, row))
   end
-  return ui.scroll({ key = "history-scroll", flexGrow = 1, gap = 6 }, rows)
+  return ui.scroll({ key = "history-scroll", flexGrow = 1, gap = 6, visible = visible }, rows)
 end
 
 local function header()
@@ -1119,34 +1125,45 @@ local function emptyState()
 end
 
 render = function()
-  local children = {
-    header(),
-  }
-  if view == "history" then
-    table.insert(children, historyList())
-  else
-    if #messages == 0 and not streaming then
-      if modelPickerOpen then
-        -- Blank filler instead of the welcome: keeps the menu card on a
-        -- clean backdrop and pinned just above the composer.
-        table.insert(children, ui.column({ key = "empty-state", flexGrow = 1 }, {}))
-      else
-        table.insert(children, emptyState())
-      end
+  -- Both views stay mounted; `visible` collapses the inactive one out of
+  -- layout entirely (flex skips invisible children), so switching views is a
+  -- repaint with no node churn - recreating the whole subtree per switch was
+  -- a visible flicker. Bonus: the composer draft survives a history visit.
+  local inChat = view == "chat"
+
+  local chatChildren = {}
+  if #messages == 0 and not streaming then
+    if modelPickerOpen then
+      -- Blank filler instead of the welcome: keeps the menu card on a
+      -- clean backdrop and pinned just above the composer.
+      table.insert(chatChildren, ui.column({ key = "empty-state", flexGrow = 1 }, {}))
     else
-      table.insert(children, messageList())
+      table.insert(chatChildren, emptyState())
     end
-    if not atBottom and view == "chat" and #messages > 0 then
-      table.insert(children, ui.row({ key = "jump-pill", justify = "center" }, {
-        ui.button({ glyph = "chevron-down", variant = "ghost", onClick = "onJumpToLatest" }),
-      }))
-    end
-    if modelPickerOpen and not streaming then
-      table.insert(children, modelMenu())
-    end
-    table.insert(children, composer())
+  else
+    table.insert(chatChildren, messageList())
   end
-  panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 12, align = "stretch" }, children))
+  if not atBottom and #messages > 0 then
+    table.insert(chatChildren, ui.row({ key = "jump-pill", justify = "center" }, {
+      ui.button({ glyph = "chevron-down", variant = "ghost", onClick = "onJumpToLatest" }),
+    }))
+  end
+  if modelPickerOpen and not streaming then
+    table.insert(chatChildren, modelMenu())
+  end
+  table.insert(chatChildren, composer())
+
+  panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 12, align = "stretch" }, {
+    header(),
+    ui.column({
+      key = "chat-stack",
+      flexGrow = 1,
+      gap = 12,
+      align = "stretch",
+      visible = inChat,
+    }, chatChildren),
+    historyList(not inChat),
+  }))
 end
 
 -- ── CALLBACKS ─────────────────────────────────────────────────────────────
