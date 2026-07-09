@@ -34,10 +34,17 @@ default = ""
 
 [[setting]]
 key = "model"
-type = "string"
-label = "Model"
-description = "Default model for new chats (one of the Models list); empty uses the list's first entry"
+type = "select"
+label = "Default model"
+description = "Model new chats start with; custom aliases from the Models list are pickable per-chat but only via 'First in list' here"
 default = ""
+options = [
+  { value = "", label = "First in list" },
+  { value = "sonnet", label = "Sonnet" },
+  { value = "opus", label = "Opus" },
+  { value = "haiku", label = "Haiku" },
+  { value = "fable", label = "Fable" },
+]
 
 [[setting]]
 key = "models"

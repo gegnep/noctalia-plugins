@@ -1049,7 +1049,9 @@ local function composer()
         glyph = modelPickerOpen and "chevron-down" or "chevron-up",
         glyphSize = 12,
         variant = "ghost",
-        enabled = not streaming,
+        -- The model is fixed once the chat has begun; the pill stays as a
+        -- read-only indicator of what this conversation runs on.
+        enabled = not streaming and #messages == 0,
         onClick = "onToggleModelPicker",
       }),
       ui.spacer({ flexGrow = 1 }),
@@ -1068,7 +1070,7 @@ end
 -- the message area and the composer; the message area's flexGrow absorbs
 -- its height, so it can never clip against the composer. (No floating
 -- popup - the framework has no z-order for plugins.)
-local function modelMenu()
+local function modelMenu(visible)
   local models = availableModels()
   local currentModel = effectiveModel()
   local currentEffort = effectiveEffort()
@@ -1137,14 +1139,18 @@ local function modelMenu()
     paddingV = 8,
     gap = 2,
     align = "stretch",
+    -- Always mounted; collapsing with visible avoids the recreate flash.
+    visible = visible,
   }, rows)
 end
 
--- Shown in place of the message list before the first message exists.
-local function emptyState()
+-- Shown in place of the message list before the first message exists. The
+-- welcome content hides (stays mounted) while the model menu is open so the
+-- card gets a clean backdrop without a recreate flash on close.
+local function emptyState(contentVisible)
   return ui.column({ key = "empty-state", flexGrow = 1, gap = 12, align = "center", justify = "center" }, {
-    ui.glyph({ name = "asterisk", size = 48, color = "on_surface_variant" }),
-    ui.label({ text = "Ask Claude anything", color = "on_surface_variant", fontSize = 12 }),
+    ui.glyph({ name = "asterisk", size = 48, color = "on_surface_variant", visible = contentVisible }),
+    ui.label({ text = "Ask Claude anything", color = "on_surface_variant", fontSize = 12, visible = contentVisible }),
   })
 end
 
@@ -1157,13 +1163,7 @@ render = function()
 
   local chatChildren = {}
   if #messages == 0 and not streaming then
-    if modelPickerOpen then
-      -- Blank filler instead of the welcome: keeps the menu card on a
-      -- clean backdrop and pinned just above the composer.
-      table.insert(chatChildren, ui.column({ key = "empty-state", flexGrow = 1 }, {}))
-    else
-      table.insert(chatChildren, emptyState())
-    end
+    table.insert(chatChildren, emptyState(not modelPickerOpen))
   else
     table.insert(chatChildren, messageList())
   end
@@ -1172,9 +1172,7 @@ render = function()
       ui.button({ glyph = "chevron-down", variant = "ghost", onClick = "onJumpToLatest" }),
     }))
   end
-  if modelPickerOpen and not streaming then
-    table.insert(chatChildren, modelMenu())
-  end
+  table.insert(chatChildren, modelMenu(modelPickerOpen and not streaming))
   table.insert(chatChildren, composer())
 
   panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 12, align = "stretch" }, {
@@ -1352,6 +1350,7 @@ local function handleLine(streamId, line, wasResume)
 end
 
 startStream = function(prompt, opts)
+  modelPickerOpen = false
   if opts.appendUserRow then
     appendMessage("user", prompt)
   end
@@ -1462,7 +1461,9 @@ function onJumpToLatest()
 end
 
 function onToggleModelPicker()
-  if streaming then
+  -- Model is only selectable before the first message (the pill is disabled
+  -- then too; this is belt-and-braces).
+  if streaming or #messages > 0 then
     return
   end
   modelPickerOpen = not modelPickerOpen
