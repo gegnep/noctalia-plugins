@@ -1560,8 +1560,28 @@ function onConfirmDeleteChat()
   if streaming or pendingDeleteChatId == nil then
     return
   end
+  local deletedCurrent = pendingDeleteChatId == sessionId
   deleteChat(pendingDeleteChatId)
   pendingDeleteChatId = nil
+  if deletedCurrent then
+    -- The open conversation was deleted; leaving its state loaded would show
+    -- a ghost chat on Back. Reset to a fresh chat (but stay in history view).
+    messages = {}
+    msgCounter = 0
+    sessionId = nil
+    hasSession = false
+    currentUuid = nil
+    openMessage = nil
+    queuedPrompt = nil
+    queuedKey = nil
+    overrideModel = ""
+    overrideEffort = ""
+    diagBuffer = {}
+    activeStreamId += 1
+    composerBuffer = ""
+    composerLines = 1
+    inputRev += 1
+  end
   render()
 end
 
