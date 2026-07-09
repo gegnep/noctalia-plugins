@@ -577,7 +577,8 @@ local function modelPickCallback(alias)
     if modelInfo(alias).effortKind == "levels" and overrideEffort == "off" then
       overrideEffort = ""
     end
-    modelPickerOpen = false
+    -- Menu stays open: picking a model and adjusting reasoning are one visit;
+    -- the user closes it with the pill.
     render()
   end
   return name
@@ -992,9 +993,11 @@ local function composer()
       }),
       ui.spacer({ flexGrow = 1 }),
       ui.label({
-        text = "Enter to send \194\183 Shift+Enter for a new line",
+        text = "Shift+Enter \194\183 new line",
         color = "on_surface_variant",
         fontSize = 11,
+        maxWidth = 160,
+        maxLines = 1,
       }),
     }),
   })
@@ -1061,7 +1064,9 @@ local function modelMenu()
 
   return ui.column({
     key = "model-menu",
-    fill = "surface_variant/0.4",
+    -- Solid fill: an alpha fill lets content behind the card bleed through
+    -- and fight the menu text.
+    fill = "surface_variant",
     radius = 12,
     paddingH = 6,
     paddingV = 8,
@@ -1086,7 +1091,13 @@ render = function()
     table.insert(children, historyList())
   else
     if #messages == 0 and not streaming then
-      table.insert(children, emptyState())
+      if modelPickerOpen then
+        -- Blank filler instead of the welcome: keeps the menu card on a
+        -- clean backdrop and pinned just above the composer.
+        table.insert(children, ui.column({ key = "empty-state", flexGrow = 1 }, {}))
+      else
+        table.insert(children, emptyState())
+      end
     else
       table.insert(children, messageList())
     end
