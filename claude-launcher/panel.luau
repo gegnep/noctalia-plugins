@@ -148,6 +148,8 @@ local function normalizeIndex(value)
         id = chat.id,
         title = type(chat.title) == "string" and chat.title or "Untitled chat",
         renamed = chat.renamed == true,
+        model = type(chat.model) == "string" and chat.model or nil,
+        effort = type(chat.effort) == "string" and chat.effort or nil,
         createdAt = type(chat.createdAt) == "number" and chat.createdAt or os.time(),
         updatedAt = type(chat.updatedAt) == "number" and chat.updatedAt or os.time(),
       })
@@ -221,11 +223,15 @@ local function sortHistoryIndex()
   end
 end
 
-local function upsertChat(id, title)
+-- model/effort are passed in by the caller: this sits above the effective-*
+-- helpers' forward declarations, so reading them here would bind nil globals.
+local function upsertChat(id, title, model, effort)
   local now = os.time()
   for _, chat in ipairs(historyIndex.chats) do
     if chat.id == id then
       chat.updatedAt = now
+      chat.model = model
+      chat.effort = effort
       sortHistoryIndex()
       saveIndex(historyIndex)
       return
@@ -234,6 +240,8 @@ local function upsertChat(id, title)
   table.insert(historyIndex.chats, 1, {
     id = id,
     title = title,
+    model = model,
+    effort = effort,
     createdAt = now,
     updatedAt = now,
   })
@@ -778,8 +786,11 @@ local function openChatCallback(chat)
     openMessage = nil
     queuedPrompt = nil
     queuedKey = nil
-    overrideModel = ""
-    overrideEffort = ""
+    -- Restore the chat's own model/effort (locked per conversation and
+    -- recorded in the index on each successful turn); entries from before
+    -- this was recorded fall back to the settings default.
+    overrideModel = type(chat.model) == "string" and chat.model or ""
+    overrideEffort = type(chat.effort) == "string" and chat.effort or ""
     diagBuffer = {}
     view = "chat"
     atBottom = true
@@ -1330,7 +1341,7 @@ local function handleLine(streamId, line, wasResume)
             msg.text = resultText
           end
           hasSession = true
-          upsertChat(currentUuid, titleFromFirstUserMessage())
+          upsertChat(currentUuid, titleFromFirstUserMessage(), effectiveModel(), effectiveEffort())
           shouldDispatchQueued = true
         end
       end
