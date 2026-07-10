@@ -1,4 +1,4 @@
-From fc5ab1e0852b78c9b46ceb18f4c37293e1ade225 Mon Sep 17 00:00:00 2001
+From bb4e9daa390d3683b75f303663b3254c90fb216f Mon Sep 17 00:00:00 2001
 From: gegnep <zainhammad.32@gmail.com>
 Date: Fri, 10 Jul 2026 00:46:11 -0400
 Subject: [PATCH] feat(plugins): expose barWidget.outputName to bar widgets
@@ -6,6 +6,8 @@ Subject: [PATCH] feat(plugins): expose barWidget.outputName to bar widgets
 The per-instance output connector name is already carried in every
 ScriptSnapshot; bind it so a bar widget can scope its content to the
 monitor it is placed on (nil when unknown).
+
+Written with AI assistance (Claude Fable 5).
 ---
  src/scripting/plugin_bindings.cpp | 11 +++++++++++
  1 file changed, 11 insertions(+)
