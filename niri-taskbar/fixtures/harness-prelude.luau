@@ -174,10 +174,23 @@ for _, name in ipairs({
   ui[name] = uiCtor(name)
 end
 
+-- Settings/orientation stubs for taskbar.luau's P2 config plumbing. Feeders
+-- may override HARNESS_CONFIG/HARNESS_IS_VERTICAL before invoking
+-- readSettings()/render() to exercise a non-default path; unset keys return
+-- nil, matching a live host's getConfig for a key the manifest doesn't seed.
+HARNESS_CONFIG = {}
+HARNESS_IS_VERTICAL = false
+
 barWidget = {
   render = function(tree)
     assert(type(tree) == "table" and tree.type ~= nil, "barWidget.render: bad tree")
     table.insert(HARNESS_RENDERS, tree)
+  end,
+  getConfig = function(key)
+    return HARNESS_CONFIG[key]
+  end,
+  isVertical = function()
+    return HARNESS_IS_VERTICAL == true
   end,
 }
 

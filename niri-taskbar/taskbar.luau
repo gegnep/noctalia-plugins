@@ -28,6 +28,16 @@ local activeStreamToken = ""
 local resyncTicks = 0
 local fallbackTokenCounter = 0
 
+-- P2 settings cache (read via barWidget.getConfig, refreshed by onConfigChanged).
+-- Defaults here match the manifest's `default` so the harness (which stubs
+-- getConfig to return nil for every key) exercises the same fallback path as
+-- an unset setting on a live host.
+local settingNiriOutput = ""
+local settingShowEmptyWorkspaces = true
+local settingShowWorkspaceNames = false
+local settingShowWindowTitles = false
+local settingMaxWindowsPerWorkspace = 10
+
 -- Callback env for the getfenv per-item-callback idiom (see claude-launcher
 -- panel.luau: env[name] = function ... end, names keyed by stable ids).
 local env = getfenv()
@@ -53,6 +63,28 @@ local focusedOutput
 
 local function trim(s)
   return (string.gsub(tostring(s or ""), "^%s*(.-)%s*$", "%1"))
+end
+
+-- Re-read [[widget.setting]] values (verified via barWidget.getConfig, see
+-- noctalia.d.luau:190) into locals. Called once at startup and again from
+-- onConfigChanged. getConfig returns nil for an unset key, so every branch
+-- below has an explicit default matching the manifest.
+local function readSettings()
+  local outputRaw = barWidget.getConfig("niri_output")
+  settingNiriOutput = type(outputRaw) == "string" and trim(outputRaw) or ""
+
+  local showEmpty = barWidget.getConfig("show_empty_workspaces")
+  settingShowEmptyWorkspaces = showEmpty ~= false
+
+  settingShowWorkspaceNames = barWidget.getConfig("show_workspace_names") == true
+  settingShowWindowTitles = barWidget.getConfig("show_window_titles") == true
+
+  local maxWindows = barWidget.getConfig("max_windows_per_workspace")
+  if type(maxWindows) == "number" and maxWindows >= 1 then
+    settingMaxWindowsPerWorkspace = math.floor(maxWindows)
+  else
+    settingMaxWindowsPerWorkspace = 10
+  end
 end
 
 local function shellQuote(value)
@@ -91,6 +123,7 @@ local function normalizeWorkspace(item)
     output = item.output or "",
     isActive = item.is_active == true,
     isFocused = item.is_focused == true,
+    isUrgent = item.is_urgent == true,
   }
 end
 
@@ -365,6 +398,12 @@ handleLine = function(line)
   end
 end
 
+-- Settings changed in the widget's config editor (noctalia.d.luau:263).
+function onConfigChanged()
+  readSettings()
+  render()
+end
+
 startStream = function()
   local token = generateStreamToken()
   activeStreamToken = token
@@ -463,15 +502,79 @@ local function truncateTitle(title)
   return text
 end
 
-local function buildWorkspaceGroup(workspace)
-  local windows = windowsForWorkspace(workspace.id)
+-- First character of the LAST dot-segment of an appId, uppercased. Empty/nil
+-- appId falls back to "?". This is the P3 icon's placeholder — the tile
+-- geometry below is sized to swap label->image without a layout jump.
+local function windowInitial(appId)
+  local text = tostring(appId or "")
+  if text == "" then
+    return "?"
+  end
+  local lastSegment = text
+  for segment in string.gmatch(text, "[^%.]+") do
+    lastSegment = segment
+  end
+  local first = string.sub(lastSegment, 1, 1)
+  if first == "" then
+    return "?"
+  end
+  return string.upper(first)
+end
 
-  -- Chip: selected always explicitly true/false (footgun #1 — absent props
-  -- never clear on a retained node).
+-- Native workspaces_widget fill roles (workspaces_widget.cpp:883-899): active
+-- -> primary, urgent -> error, occupied -> secondary, empty -> muted. Button
+-- is the only clickable+labeled control the reconciler exposes (box is a
+-- leaf with no children — ui_tree_reconciler.cpp:195-197 drops children on
+-- any non-flex/non-scroll control, kBox has no text-related prop at all), so
+-- role fill/label-color combos are approximated via ButtonVariant, whose
+-- built-in palettes (button.cpp:32-176) already resolve to the matching
+-- on_* label color per state.
+local function chipVariant(workspace, occupied)
+  if workspace.isUrgent then
+    return "destructive" -- fill=error, label=on_error
+  elseif workspace.isActive then
+    return "primary" -- fill=primary, label=on_primary
+  elseif occupied then
+    return "secondary" -- fill=secondary, label=on_secondary
+  end
+  return "default" -- fill=surface_variant, label=on_surface (closest empty preset)
+end
+
+local function workspaceLabel(workspace)
+  if settingShowWorkspaceNames and workspace.name ~= nil and workspace.name ~= "" then
+    return workspace.name
+  end
+  return tostring(workspace.idx)
+end
+
+-- Button has no paddingH prop (kButton lacks it), so the native "active pill
+-- is ~2.2x wider" is approximated with literal padding spaces rather than a
+-- real inset — an intentional deviation, see report.
+local function chipText(workspace)
+  local label = workspaceLabel(workspace)
+  if workspace.isActive then
+    return "  " .. label .. "  "
+  end
+  return label
+end
+
+local function windowTileText(window, showTitles)
+  local initial = windowInitial(window.appId)
+  if showTitles then
+    return initial .. " " .. truncateTitle(window.title)
+  end
+  return initial
+end
+
+local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
+  -- Chip: variant/selected/onClick always explicitly set (footgun #1 —
+  -- absent props never clear on a retained node).
   local chip = ui.button({
     key = "ws-" .. workspace.id,
-    text = workspace.name or tostring(workspace.idx),
-    selected = workspace.isActive == true,
+    text = chipText(workspace),
+    fontSize = 11,
+    variant = chipVariant(workspace, occupied),
+    selected = false,
     onClick = registerWorkspaceCallback(workspace),
   })
 
@@ -479,12 +582,31 @@ local function buildWorkspaceGroup(workspace)
   -- workspace), only `visible` flips. Recreating this subtree on
   -- expand/collapse would read as a visible flash (footgun #3).
   local windowButtons = {}
+  local cap = settingMaxWindowsPerWorkspace
+  local shown = 0
   for _, window in ipairs(windows) do
+    if shown >= cap then
+      break
+    end
+    shown += 1
+    -- Focused fill=surface_variant (default variant matches exactly);
+    -- unfocused approximated with ghost (transparent) — no ButtonVariant
+    -- exposes an alpha-blended surface_variant fill, see report.
     table.insert(windowButtons, ui.button({
       key = "win-" .. window.id,
-      text = truncateTitle(window.title),
-      selected = window.isFocused == true,
+      text = windowTileText(window, showTitles),
+      fontSize = 11,
+      variant = window.isFocused == true and "default" or "ghost",
+      selected = false,
       onClick = registerWindowCallback(window),
+    }))
+  end
+  if #windows > cap then
+    table.insert(windowButtons, ui.label({
+      key = "more-" .. workspace.id,
+      text = "+" .. tostring(#windows - cap),
+      fontSize = 11,
+      color = "on_surface_variant",
     }))
   end
   local windowsRow = ui.row({
@@ -497,20 +619,45 @@ local function buildWorkspaceGroup(workspace)
 end
 
 render = function()
+  local outputFilter = settingNiriOutput ~= "" and settingNiriOutput or nil
+  local vertical = barWidget.isVertical() == true
+  -- Vertical bars force titles off regardless of the setting (narrow column
+  -- has no room for a title next to the initial tile).
+  local showTitles = settingShowWindowTitles and not vertical
+
   local groups = {}
-  for _, workspace in ipairs(sortedWorkspaces(nil)) do
-    table.insert(groups, buildWorkspaceGroup(workspace))
+  for _, workspace in ipairs(sortedWorkspaces(outputFilter)) do
+    local windows = windowsForWorkspace(workspace.id)
+    local occupied = #windows > 0
+    if settingShowEmptyWorkspaces or occupied or workspace.isActive then
+      table.insert(groups, buildWorkspaceGroup(workspace, windows, occupied, showTitles))
+    end
   end
 
   if #groups == 0 then
-    table.insert(groups, ui.button({
+    -- Quiet, non-interactive affordance: ui.row (Flex) supports fill/radius/
+    -- padding + a label child (verified: official-plugins/example/
+    -- declarative.luau:21-23 uses this exact row+label pill pattern); no
+    -- click needed here so the box leaf-node constraint doesn't apply.
+    table.insert(groups, ui.row({
       key = "empty-niri",
-      text = "niri?",
-      selected = false,
+      fill = "surface_variant/0.25",
+      radius = 8,
+      paddingH = 6,
+      paddingV = 2,
+      align = "center",
+    }, {
+      ui.label({ text = "niri?", fontSize = 11, color = "on_surface_variant" }),
     }))
   end
 
-  barWidget.render(ui.row({ gap = 6, align = "center" }, groups))
+  -- Root container direction: the host's m_uiHost wrapper auto-flips, but
+  -- that only affects the single child we hand it (plugin_widget.cpp:298-
+  -- 306) — our own top-level row must pick vertical/horizontal itself to
+  -- actually stack chips in a side bar, same pattern as official-plugins/
+  -- example/declarative.luau:15.
+  local container = vertical and ui.column or ui.row
+  barWidget.render(container({ gap = 6, align = "center" }, groups))
 end
 
 -- ============================================================
@@ -518,5 +665,6 @@ end
 -- ============================================================
 
 noctalia.setUpdateInterval(250)
+readSettings()
 startStream()
 render()

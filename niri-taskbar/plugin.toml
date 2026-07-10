@@ -12,3 +12,41 @@ dependencies = []
 [[widget]]
 id = "taskbar"
 entry = "taskbar.luau"
+
+  [[widget.setting]]
+  key = "niri_output"
+  type = "string"
+  label = "Output filter"
+  description = "Set a connector name (e.g. DP-3) to show only that output's workspaces; empty shows all. Set per bar placement."
+  default = ""
+
+  [[widget.setting]]
+  key = "show_empty_workspaces"
+  type = "bool"
+  label = "Show empty workspaces"
+  description = "Show chips for workspaces with no windows. The active workspace is always shown."
+  default = true
+
+  [[widget.setting]]
+  key = "show_workspace_names"
+  type = "bool"
+  label = "Show workspace names"
+  description = "Show the workspace name on its chip when set, falling back to the index. Off always shows the index."
+  default = false
+
+  [[widget.setting]]
+  key = "show_window_titles"
+  type = "bool"
+  label = "Show window titles"
+  description = "Show a truncated window title next to each window tile. Always off in a vertical (side) bar."
+  default = false
+
+  [[widget.setting]]
+  key = "max_windows_per_workspace"
+  type = "int"
+  label = "Max windows per workspace"
+  description = "Cap on expanded window tiles per workspace before collapsing the rest into a +N label."
+  default = 10
+  min = 1
+  max = 30
+  step = 1
