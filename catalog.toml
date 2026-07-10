@@ -11,3 +11,14 @@ icon = "asterisk"
 description = "Streaming chat panel for Claude, backed by the Claude Code CLI (subscription auth). Not affiliated with Anthropic."
 min_noctalia = "5.0.0"
 tags = ["chat", "ai", "claude", "assistant"]
+
+[[plugin]]
+id = "gegnep/niri-taskbar"
+name = "Niri Taskbar"
+version = "0.1.0"
+author = "pengeg"
+license = "MIT"
+icon = "layout-grid"
+description = "Combined niri workspace/taskbar widget: workspace chips that expand on hover to show each workspace's windows."
+min_noctalia = "5.0.0"
+tags = ["niri", "workspaces", "taskbar"]
