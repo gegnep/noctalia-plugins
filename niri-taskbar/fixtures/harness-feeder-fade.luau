@@ -49,14 +49,39 @@ rowAnim = {}
 HARNESS_INTERVAL_CALLS = {}
 
 settingDisplay = "id" -- idx "1" -> 1 char
+settingChipSize = 16
+settingChipStyle = "oval"
 HARNESS_RENDERS = {}
 render()
 local chip1ByIdx = findNode(lastTree(), "ws-1")
 assert(chip1ByIdx ~= nil, "chip node missing")
-assert(chip1ByIdx.props.width == 16, "1-char label chip should be a 16px circle, got " .. tostring(chip1ByIdx.props.width))
-assert(chip1ByIdx.props.height == 16, "chip height should be 16 (matches baseGlyphSize), got " .. tostring(chip1ByIdx.props.height))
+-- Idle (collapsed): oval geometry. width = round(16*1.4) = 22,
+-- height = round(16*0.8) = 13, radius = height/2 = 6.5.
+assert(chip1ByIdx.props.width == 22, "1-char label idle oval chip width mismatch, got " .. tostring(chip1ByIdx.props.width))
+assert(chip1ByIdx.props.height == 13, "1-char label idle oval chip height mismatch, got " .. tostring(chip1ByIdx.props.height))
+assert(chip1ByIdx.props.radius == 6.5, "1-char label idle oval chip radius mismatch, got " .. tostring(chip1ByIdx.props.radius))
 assert(chip1ByIdx.props.paddingH == nil, "chipPaddingH geometry should be gone")
 assert(chip1ByIdx.props.contentAlign == "center", "chip should center its text now that width owns geometry")
+
+-- Expanded (rowOpen true): oval snaps to the full circle regardless of style.
+expanded = true
+HARNESS_RENDERS = {}
+render()
+local chip1Expanded = findNode(lastTree(), "ws-1")
+assert(chip1Expanded.props.width == 16, "expanded oval chip should be a 16px circle, got " .. tostring(chip1Expanded.props.width))
+assert(chip1Expanded.props.height == 16, "expanded oval chip height should be 16, got " .. tostring(chip1Expanded.props.height))
+assert(chip1Expanded.props.radius == 8, "expanded oval chip radius should be 8, got " .. tostring(chip1Expanded.props.radius))
+expanded = false
+
+-- chip_style "circle": always the full circle, collapsed or expanded.
+settingChipStyle = "circle"
+HARNESS_RENDERS = {}
+render()
+local chip1Circle = findNode(lastTree(), "ws-1")
+assert(chip1Circle.props.width == 16 and chip1Circle.props.height == 16 and chip1Circle.props.radius == 8,
+  "circle style should always render a 16px circle, got w=" .. tostring(chip1Circle.props.width)
+    .. " h=" .. tostring(chip1Circle.props.height) .. " r=" .. tostring(chip1Circle.props.radius))
+settingChipStyle = "oval"
 
 local chipDot1 = findNode(lastTree(), "ws-chipcol-1-dot")
 assert(chipDot1 ~= nil, "chip dot slot missing")
@@ -294,3 +319,78 @@ assert(rowAnim[1].opacity == 0 and rowAnim[1].target == 0, "old row must snap fu
 local oldRow = findNode(lastTree(), "wins-1")
 assert(oldRow.props.visible == false, "old row must be hidden in the same render as the switch")
 assert(rowAnim[2].target == 1, "new row should be fading in after the switch")
+
+-- ---- fixture (g): show_focus_dot gates only the lit fill, never geometry -
+
+workspacesById = {
+  [1] = { id = 1, idx = 1, name = "abc", output = "DP-3", isActive = false, isFocused = true, isUrgent = false },
+}
+windowsById = {
+  [100] = { id = 100, title = "Term", appId = "firefox", workspaceId = 1, isFocused = true },
+}
+perChipHover = false
+expanded = false
+expandedWsId = nil
+rowAnim = {}
+settingShowFocusDot = false
+HARNESS_RENDERS = {}
+render()
+local dotGated = findNode(lastTree(), "win-100-dot")
+assert(dotGated.props.fill == "primary/0", "show_focus_dot=false must never light the dot even when focused, got " .. tostring(dotGated.props.fill))
+assert(dotGated.props.width == 4 and dotGated.props.height == 2 and dotGated.props.radius == 1, "dot geometry must stay stable when show_focus_dot is off")
+local padGated = findNode(lastTree(), "win-100-pad")
+assert(padGated.props.width == 4 and padGated.props.height == 2, "spacer geometry must stay stable when show_focus_dot is off")
+settingShowFocusDot = true
+HARNESS_RENDERS = {}
+render()
+local dotUngated = findNode(lastTree(), "win-100-dot")
+assert(dotUngated.props.fill == "primary", "show_focus_dot=true should light a focused window's dot again, got " .. tostring(dotUngated.props.fill))
+
+-- ---- fixture (h): chip_spacing drives the root container gap -------------
+
+HARNESS_RENDERS = {}
+settingChipSpacing = 3
+render()
+assert(lastTree().props.gap == 3, "default chip_spacing should drive the root gap to 3, got " .. tostring(lastTree().props.gap))
+settingChipSpacing = 9
+HARNESS_RENDERS = {}
+render()
+assert(lastTree().props.gap == 9, "chip_spacing should drive the root container gap, got " .. tostring(lastTree().props.gap))
+settingChipSpacing = 3
+
+-- ---- fixture (i): collapse_delay_ms / expand_speed via readSettings -----
+
+HARNESS_CONFIG = { collapse_delay_ms = 2000, expand_speed = "fast" }
+readSettings()
+assert(COLLAPSE_GRACE_MS == 2000, "collapse_delay_ms should overwrite COLLAPSE_GRACE_MS, got " .. tostring(COLLAPSE_GRACE_MS))
+assert(FADE_TAU_MS == 40, "expand_speed=fast should set FADE_TAU_MS to 40, got " .. tostring(FADE_TAU_MS))
+
+HARNESS_CONFIG = { expand_speed = "slow" }
+readSettings()
+assert(FADE_TAU_MS == 100, "expand_speed=slow should set FADE_TAU_MS to 100, got " .. tostring(FADE_TAU_MS))
+assert(COLLAPSE_GRACE_MS == 1250, "an unset collapse_delay_ms should fall back to the 1250ms default, got " .. tostring(COLLAPSE_GRACE_MS))
+
+HARNESS_CONFIG = {}
+readSettings()
+assert(FADE_TAU_MS == 65, "an unset expand_speed should fall back to normal (65ms), got " .. tostring(FADE_TAU_MS))
+assert(COLLAPSE_GRACE_MS == 1250, "an unset collapse_delay_ms should fall back to the 1250ms default, got " .. tostring(COLLAPSE_GRACE_MS))
+
+-- ---- fixture (j): pill_tint drives the fill/border formula ---------------
+
+workspacesById = {
+  [1] = { id = 1, idx = 1, name = "abc", output = "DP-3", isActive = false, isFocused = true, isUrgent = false },
+}
+windowsById = {
+  [100] = { id = 100, title = "Term", appId = "firefox", workspaceId = 1, isFocused = true },
+}
+perChipHover = false
+expanded = true -- fully open so anim.opacity settles to 1 in one bumpAndRender pass below
+rowAnim = { [1] = { opacity = 1, target = 1 } }
+settingPillTint = 50
+HARNESS_RENDERS = {}
+render()
+local groupTinted = findNode(lastTree(), "ws-group-1")
+assert(groupTinted.props.fill == "surface_variant/0.50", "pill_tint=50 should yield a 0.50 fill at settled open, got " .. tostring(groupTinted.props.fill))
+assert(groupTinted.props.border == "primary/0.55", "pill_tint=50 should yield a 0.55 border ((50/100)+0.05), got " .. tostring(groupTinted.props.border))
+settingPillTint = 30
+expanded = false

@@ -89,3 +89,73 @@ entry = "taskbar.luau"
   min = 12
   max = 32
   step = 1
+
+  [[widget.setting]]
+  key = "chip_size"
+  type = "int"
+  label = "Chip size"
+  description = "Workspace chip diameter."
+  default = 16
+  min = 12
+  max = 24
+  step = 1
+
+  [[widget.setting]]
+  key = "chip_style"
+  type = "select"
+  label = "Chip style"
+  description = "Idle chip shape: a compact lying oval that rounds into a circle on expand, or always a circle."
+  default = "oval"
+  options = [
+    { value = "oval", label = "Oval" },
+    { value = "circle", label = "Circle" },
+  ]
+
+  [[widget.setting]]
+  key = "chip_spacing"
+  type = "int"
+  label = "Chip spacing"
+  description = "Spacing between workspaces."
+  default = 3
+  min = 0
+  max = 12
+  step = 1
+
+  [[widget.setting]]
+  key = "collapse_delay_ms"
+  type = "int"
+  label = "Collapse delay"
+  description = "Hover linger before collapse, in milliseconds."
+  default = 1250
+  min = 250
+  max = 5000
+  step = 250
+
+  [[widget.setting]]
+  key = "expand_speed"
+  type = "select"
+  label = "Expand speed"
+  description = "Expand animation speed."
+  default = "normal"
+  options = [
+    { value = "fast", label = "Fast" },
+    { value = "normal", label = "Normal" },
+    { value = "slow", label = "Slow" },
+  ]
+
+  [[widget.setting]]
+  key = "show_focus_dot"
+  type = "bool"
+  label = "Show focus dot"
+  description = "Show a dot under the focused window's tile."
+  default = true
+
+  [[widget.setting]]
+  key = "pill_tint"
+  type = "int"
+  label = "Pill tint"
+  description = "Expanded pill tint strength (%)."
+  default = 30
+  min = 0
+  max = 60
+  step = 5

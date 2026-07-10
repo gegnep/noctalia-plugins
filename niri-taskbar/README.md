@@ -1,11 +1,11 @@
 # niri-taskbar
 
 A combined workspace/taskbar bar widget for [niri](https://github.com/YaLTeR/niri),
-built for [Noctalia](https://noctalia.dev) v5. It renders workspace chips
-styled like Noctalia's native workspaces widget — active workspace is a
-wider primary-colored capsule, occupied workspaces are secondary, urgent
-workspaces are error-colored, empty ones are muted — and expands a chip on
-hover into real app-icon tiles for every window on that workspace.
+built for [Noctalia](https://noctalia.dev) v5. It renders compact workspace
+chips colored like Noctalia's native workspaces widget — active = primary,
+occupied = secondary, urgent = error, empty = muted — and on hover a chip
+rounds out and grows into a tinted pill containing real app-icon tiles for
+every window on that workspace.
 
 <!-- screenshot: default bar strip, all chips collapsed -->
 <!-- screenshot: a chip expanded on hover showing window icon tiles -->
@@ -15,8 +15,9 @@ niri only — it drives itself entirely off `niri msg --json event-stream`.
 
 ### Features
 
-- Workspace chips matching the native workspaces widget's look: active =
-  primary + wider, occupied = secondary, urgent = error, empty = muted
+- Workspace chips matching the native workspaces widget's palette: active =
+  primary, occupied = secondary, urgent = error, empty = muted; idle chips
+  are compact ovals (or circles — configurable) that round out on hover
 - Hover a chip to expand it into app-icon tiles for its windows; click a
   tile to focus that window
 - Per-workspace hover: hovering one chip expands only that chip, not every
@@ -80,6 +81,13 @@ widget.
 | `max_label_chars` | int | `1` | Truncate workspace name labels to this many characters (purely numeric labels are never truncated) |
 | `only_active_workspace` | bool | `false` | Show window tiles only for each monitor's active workspace; other workspace chips still render |
 | `icon_size` | int | `16` | Window app icon size in pixels |
+| `chip_size` | int | `16` | Workspace chip diameter |
+| `chip_style` | select | `oval` | Idle chip shape: `oval` is a compact lying oval that rounds into a circle when its group expands; `circle` is always a circle |
+| `chip_spacing` | int | `3` | Spacing between workspaces |
+| `collapse_delay_ms` | int | `1250` | Hover linger before collapse, in milliseconds |
+| `expand_speed` | select | `normal` | Expand animation speed: `fast`, `normal`, or `slow` |
+| `show_focus_dot` | bool | `true` | Show a dot under the focused window's tile |
+| `pill_tint` | int | `30` | Expanded pill tint strength, as a percentage |
 
 ### Development
 

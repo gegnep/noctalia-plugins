@@ -17,7 +17,7 @@ local expanded = false
 -- again whenever the pointer crosses a gap between buttons) or any click
 -- cancels it. Cost: resting motionless on a button collapses after the
 -- grace period — fixed properly by the v2 per-node-hover host patch.
-local COLLAPSE_GRACE_MS = 1250 -- ~1.25s, was 5 ticks at the 250ms update interval
+local COLLAPSE_GRACE_MS = 1250 -- ~1.25s, was 5 ticks at the 250ms update interval; readSettings() overwrites from collapse_delay_ms
 local collapsePending = false
 local graceMs = 0
 
@@ -27,7 +27,7 @@ local graceMs = 0
 -- only drops to visible=false once a closing row's opacity reaches 0 exactly
 -- (see stepRowAnims). Lazily populated per workspace id by ensureRowAnim.
 local rowAnim = {}
-local FADE_TAU_MS = 65 -- exponential ease-out time constant; ~3*tau (~195ms) to settle — softer tail than the initial 50ms tuning
+local FADE_TAU_MS = 65 -- exponential ease-out time constant; ~3*tau (~195ms) to settle — softer tail than the initial 50ms tuning; readSettings() overwrites from expand_speed (fast=40/normal=65/slow=100)
 local FADE_SNAP_EPS = 0.02
 
 -- Update interval: 250ms at rest, dropped to 16ms while any rowAnim is
@@ -67,6 +67,13 @@ local settingLabelsOnlyWhenOccupied = false
 local settingMaxLabelChars = 1
 local settingOnlyActiveWorkspace = false
 local settingIconSize = 16
+-- P4 visual-tweak settings (chip geometry/spacing/timing/tint). Defaults here
+-- match the manifest's `default`, same rationale as the block above.
+local settingChipSize = 16
+local settingChipStyle = "oval" -- "oval" | "circle"
+local settingChipSpacing = 3
+local settingShowFocusDot = true
+local settingPillTint = 30
 
 -- P3 icon resolver state. false is a cached miss so unresolved apps do not
 -- repeatedly cross the host boundary.
@@ -157,6 +164,52 @@ local function readSettings()
     settingIconSize = math.floor(iconSize)
   else
     settingIconSize = 16
+  end
+
+  local chipSize = barWidget.getConfig("chip_size")
+  if type(chipSize) == "number" and chipSize >= 12 and chipSize <= 24 then
+    settingChipSize = math.floor(chipSize)
+  else
+    settingChipSize = 16
+  end
+
+  local chipStyle = barWidget.getConfig("chip_style")
+  if chipStyle == "circle" then
+    settingChipStyle = "circle"
+  else
+    settingChipStyle = "oval"
+  end
+
+  local chipSpacing = barWidget.getConfig("chip_spacing")
+  if type(chipSpacing) == "number" and chipSpacing >= 0 and chipSpacing <= 12 then
+    settingChipSpacing = math.floor(chipSpacing)
+  else
+    settingChipSpacing = 3
+  end
+
+  local collapseDelay = barWidget.getConfig("collapse_delay_ms")
+  if type(collapseDelay) == "number" and collapseDelay >= 250 and collapseDelay <= 5000 then
+    COLLAPSE_GRACE_MS = math.floor(collapseDelay)
+  else
+    COLLAPSE_GRACE_MS = 1250
+  end
+
+  local expandSpeed = barWidget.getConfig("expand_speed")
+  if expandSpeed == "fast" then
+    FADE_TAU_MS = 40
+  elseif expandSpeed == "slow" then
+    FADE_TAU_MS = 100
+  else
+    FADE_TAU_MS = 65
+  end
+
+  settingShowFocusDot = barWidget.getConfig("show_focus_dot") ~= false
+
+  local pillTint = barWidget.getConfig("pill_tint")
+  if type(pillTint) == "number" and pillTint >= 0 and pillTint <= 60 then
+    settingPillTint = math.floor(pillTint)
+  else
+    settingPillTint = 30
   end
 end
 
@@ -884,7 +937,8 @@ local function workspaceLabel(workspace)
 end
 
 -- Chip text: display "none" keeps a single space so the capsule body has
--- content height (chipWidth then renders it as a bare circle at CHIP_SIZE).
+-- content height (chipWidth/chipHeight then render it as a bare circle/oval
+-- per chip_style).
 -- labels_only_when_occupied (native workspaces_widget.cpp:59-66): hide the
 -- label for a non-active, unoccupied workspace even when a display mode is
 -- selected, rendering a bare pill instead.
@@ -912,24 +966,45 @@ local function textLength(text)
   return string.len(text)
 end
 
--- Chip diameter: 16 matches both Style::baseGlyphSize (the native
--- workspaces pill height basis) and the default icon_size, so the chip, its
--- symmetric dot slot, and a window tile all share one vertical rhythm.
-local CHIP_SIZE = 16
+-- Chip diameter: settingChipSize (default 16, matches both
+-- Style::baseGlyphSize — the native workspaces pill height basis — and the
+-- default icon_size) so the chip, its symmetric dot slot, and a window tile
+-- all share one vertical rhythm by default. The indicator column's own
+-- spacer/dot stay fixed-size regardless (rhythm, not content).
 
--- Perfect-circle chips: a single-character label (digit, bare space for
--- display "none") gets width == height (CHIP_SIZE) for a true circle;
--- anything longer (workspace names, two-digit ids) widens into a capsule at
--- 6px per extra character. Width is ALWAYS computed and set (footgun #1) —
--- geometry no longer comes from paddingH, so there is no "unset" fallback to
--- fall back to. The active workspace uses this same formula: the
--- primary-fill variant is the whole active cue, not extra width.
-local function chipWidth(text)
+-- Chip height: chip_style "oval" renders a shorter, wider idle chip while its
+-- group is collapsed (rowOpen false); once its group is expanded (or fading
+-- in — the caller passes rowOpen from anim.target == 1) the chip snaps to
+-- the full-circle height, same as chip_style "circle" at all times. Rounded
+-- with +0.5 floor (no bankers'/away-from-zero surprises for the fixed
+-- 0..24 setting range).
+local function chipHeight(rowOpen)
+  if settingChipStyle == "oval" and not rowOpen then
+    return math.floor(settingChipSize * 0.8 + 0.5)
+  end
+  return settingChipSize
+end
+
+-- Perfect-circle/oval chips: a single-character label (digit, bare space for
+-- display "none") gets width == chipHeight for oval-expanded/circle (a true
+-- circle), or the compact 1.4x-wide oval width when idle+collapsed under
+-- chip_style "oval". Anything longer (workspace names, two-digit ids) always
+-- uses the capsule formula (6px per extra character on top of chip_size),
+-- regardless of style — long labels never go oval, only the chip's height
+-- follows the style/rowOpen rule via chipHeight. Width is ALWAYS computed
+-- and set (footgun #1) — geometry no longer comes from paddingH, so there is
+-- no "unset" fallback to fall back to. The active workspace uses this same
+-- formula: the primary-fill variant is the whole active cue, not extra
+-- width.
+local function chipWidth(text, rowOpen)
   local len = textLength(text)
   if len <= 1 then
-    return CHIP_SIZE
+    if settingChipStyle == "oval" and not rowOpen then
+      return math.floor(settingChipSize * 1.4 + 0.5)
+    end
+    return settingChipSize
   end
-  return CHIP_SIZE + 6 * (len - 1)
+  return settingChipSize + 6 * (len - 1)
 end
 
 local function windowTileText(window, showTitles)
@@ -948,6 +1023,9 @@ end
 -- content shares one centerline. Total height: 2+1+16+1+2 = 22, which fits
 -- the ~23px bar content slot that clamped taller layouts into ovals.
 -- Spacer/dot fills are ALWAYS present (footgun #1); the spacer is never lit.
+-- show_focus_dot gates ONLY the lit fill below, never the geometry — the dot
+-- and its mirror spacer are rhythm (fixed-size, always mounted) regardless of
+-- the setting, so toggling it never shifts layout.
 local function withIndicator(key, content, lit)
   local spacer = ui.row({
     key = key .. "-pad",
@@ -961,7 +1039,7 @@ local function withIndicator(key, content, lit)
     width = 4,
     height = 2,
     radius = 1,
-    fill = lit and "primary" or "primary/0",
+    fill = (lit and settingShowFocusDot) and "primary" or "primary/0",
   })
   return ui.column({
     key = key,
@@ -1063,6 +1141,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- square look / widget-level expand-all.
   local hoverName = "hoverWs_" .. workspace.id
   local chipTextValue = chipText(workspace, occupied)
+  local chipHeightValue = chipHeight(rowOpen)
   local chip = ui.button({
     key = "ws-" .. workspace.id,
     text = chipTextValue,
@@ -1070,13 +1149,16 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     variant = chipVariant(workspace, occupied),
     selected = false,
     -- height beats Button's 32px minHeight floor (style.h controlHeightSm);
-    -- radius = height/2 + contentAlign=center makes a true circle for a
-    -- 1-char label at width==height==CHIP_SIZE, capsule beyond that.
-    -- CHIP_SIZE (16) matches Style::baseGlyphSize, the actual height basis
-    -- the bar's content slot clamps to — a hardcoded 22 rendered as an oval.
-    height = CHIP_SIZE,
-    width = chipWidth(chipTextValue),
-    radius = CHIP_SIZE / 2,
+    -- radius = height/2 + contentAlign=center makes a true circle/oval for a
+    -- 1-char label, capsule beyond that. settingChipSize (default 16)
+    -- matches Style::baseGlyphSize, the actual height basis the bar's
+    -- content slot clamps to — a hardcoded 22 rendered as an oval. width/
+    -- height/radius are ALWAYS explicitly set (footgun #1) even though the
+    -- shape can change between renders on this same retained keyed button
+    -- (oval collapsed <-> circle expanded).
+    height = chipHeightValue,
+    width = chipWidth(chipTextValue, rowOpen),
+    radius = chipHeightValue / 2,
     contentAlign = "center",
     onClick = registerWorkspaceCallback(workspace),
     onHover = hoverName,
@@ -1115,7 +1197,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     visible = anim.opacity > 0 or anim.target == 1,
     opacity = anim.opacity,
     align = "center",
-    gap = 4,
+    gap = 3, -- tightened from 4 alongside the group row's own gap = 3 below
   }, windowButtons)
 
   -- Group capsule (native group-by-workspace look, taskbar_widget.cpp:~640):
@@ -1127,11 +1209,14 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- with the icons it contains. An unoccupied workspace never tints, even
   -- mid-fade — an empty expanded row has no icons to contain.
   local tintOpacity = occupied and anim.opacity or 0
-  local capsuleFill = "surface_variant/" .. string.format("%.2f", 0.30 * tintOpacity)
+  local pillTintFraction = settingPillTint / 100
+  local capsuleFill = "surface_variant/" .. string.format("%.2f", pillTintFraction * tintOpacity)
   -- "Apps inside the pill with a highlight around it": a primary-tinted
   -- hairline that fades in step with the tint (explicit both ways — alpha 0
-  -- when closed, never an absent prop).
-  local capsuleBorder = "primary/" .. string.format("%.2f", 0.35 * tintOpacity)
+  -- when closed, never an absent prop). Border tracks pill_tint (+0.05 fixed
+  -- offset) so it stays proportionally a touch stronger than the fill,
+  -- matching the old fixed 0.30 fill / 0.35 border relationship at defaults.
+  local capsuleBorder = "primary/" .. string.format("%.2f", (pillTintFraction + 0.05) * tintOpacity)
 
   return ui.row({
     key = "ws-group-" .. workspace.id,
@@ -1203,7 +1288,7 @@ render = function()
   -- actually stack chips in a side bar, same pattern as official-plugins/
   -- example/declarative.luau:15.
   local container = vertical and ui.column or ui.row
-  barWidget.render(container({ gap = 6, align = "center" }, groups))
+  barWidget.render(container({ gap = settingChipSpacing, align = "center" }, groups))
 
   -- Every workspace's rowAnim.target was just set above (buildWorkspaceGroup);
   -- sync the tick interval to whether any row is now mid-flight so a
