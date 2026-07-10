@@ -10,6 +10,18 @@
 
 local expanded = false
 
+-- Hover grace period. The host's input dispatcher tracks ONE hovered
+-- InputArea — the innermost under the pointer (input_dispatcher.cpp:
+-- updateHover/findInputAreaAt) — so moving onto any chip/window button
+-- fires onHover(false) on the widget even though the pointer is still
+-- inside it. Collapse therefore runs on a countdown: onHover(true) (fires
+-- again whenever the pointer crosses a gap between buttons) or any click
+-- cancels it. Cost: resting motionless on a button collapses after the
+-- grace period — fixed properly by the v2 per-node-hover host patch.
+local COLLAPSE_GRACE_TICKS = 5 -- ~1.25s at the 250ms update interval
+local collapsePending = false
+local collapseTicks = 0
+
 local WORKSPACES = {
   { id = 101, idx = 1 },
   { id = 102, idx = 2 },
@@ -48,12 +60,14 @@ local render
 local function registerWorkspaceCallbacks(workspace)
   local wsName = "focusWs_" .. workspace.id
   env[wsName] = function()
+    collapseTicks = 0 -- click proves the pointer is inside the widget
     noctalia.notify("niri-taskbar", "focus workspace " .. workspace.idx)
   end
 
   for _, window in ipairs(WINDOWS_BY_WORKSPACE[workspace.id] or {}) do
     local winName = "focusWin_" .. window.id
     env[winName] = function()
+      collapseTicks = 0
       noctalia.notify("niri-taskbar", "focus window " .. window.id)
     end
   end
@@ -64,8 +78,30 @@ end
 -- explicit boolean per reconciler footgun #3 (visible must always be set,
 -- never conditionally omitted).
 function onHover(state)
-  expanded = state and true or false
-  render()
+  if state then
+    collapsePending = false
+    if not expanded then
+      expanded = true
+      render()
+    end
+  else
+    collapsePending = true
+    collapseTicks = 0
+  end
+end
+
+-- Widget tick (noctalia.setUpdateInterval below): drives only the
+-- grace-period countdown in P0. P1 adds the niri resync pass here.
+function update()
+  if not collapsePending then
+    return
+  end
+  collapseTicks = collapseTicks + 1
+  if collapseTicks >= COLLAPSE_GRACE_TICKS then
+    collapsePending = false
+    expanded = false
+    render()
+  end
 end
 
 -- ============================================================
@@ -121,4 +157,5 @@ for _, workspace in ipairs(WORKSPACES) do
   registerWorkspaceCallbacks(workspace)
 end
 
+noctalia.setUpdateInterval(250)
 render()
