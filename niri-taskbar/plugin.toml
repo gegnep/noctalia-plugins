@@ -31,11 +31,12 @@ entry = "taskbar.luau"
   key = "display"
   type = "select"
   label = "Workspace label"
-  description = "What each chip shows: the workspace index, its name (falls back to the index), or a bare pill."
+  description = "What each chip shows: the workspace index, its name (falls back to the index), its window count, or a bare pill."
   default = "id"
   options = [
     { value = "id", label = "Id" },
     { value = "name", label = "Name" },
+    { value = "windows", label = "Window count" },
     { value = "none", label = "None" },
   ]
 
@@ -101,15 +102,14 @@ entry = "taskbar.luau"
   step = 1
 
   [[widget.setting]]
-  key = "chip_style"
-  type = "select"
-  label = "Chip style"
-  description = "Idle chip shape: a compact lying oval that rounds into a circle on expand, or always a circle."
-  default = "oval"
-  options = [
-    { value = "oval", label = "Oval" },
-    { value = "circle", label = "Circle" },
-  ]
+  key = "chip_ratio"
+  type = "int"
+  label = "Idle chip stretch (%)"
+  description = "Idle chip width-to-height ratio: 100 is a circle, 140 a compact oval, 300+ approaches a line. Chips always round into circles on expand."
+  default = 140
+  min = 100
+  max = 400
+  step = 10
 
   [[widget.setting]]
   key = "chip_spacing"

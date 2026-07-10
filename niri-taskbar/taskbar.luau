@@ -70,7 +70,7 @@ local settingIconSize = 16
 -- P4 visual-tweak settings (chip geometry/spacing/timing/tint). Defaults here
 -- match the manifest's `default`, same rationale as the block above.
 local settingChipSize = 16
-local settingChipStyle = "oval" -- "oval" | "circle"
+local settingChipRatio = 140 -- idle width:height %, 100 = circle .. 400 = line
 local settingChipSpacing = 3
 local settingShowFocusDot = true
 local settingPillTint = 30
@@ -173,11 +173,11 @@ local function readSettings()
     settingChipSize = 16
   end
 
-  local chipStyle = barWidget.getConfig("chip_style")
-  if chipStyle == "circle" then
-    settingChipStyle = "circle"
+  local chipRatio = barWidget.getConfig("chip_ratio")
+  if type(chipRatio) == "number" and chipRatio >= 100 and chipRatio <= 400 then
+    settingChipRatio = math.floor(chipRatio)
   else
-    settingChipStyle = "oval"
+    settingChipRatio = 140
   end
 
   local chipSpacing = barWidget.getConfig("chip_spacing")
@@ -297,6 +297,7 @@ local function normalizeWindow(item, previous)
     appId = item.app_id or item.class or "",
     workspaceId = workspaceId,
     isFocused = item.is_focused == true,
+    isUrgent = item.is_urgent == true,
     -- {x, y} array from niri's scrolling-layout column/row, or nil for a
     -- window with no layout info yet (e.g. floating). Used for ordering
     -- only (windowsForWorkspace); WindowLayoutsChanged updates this
@@ -926,9 +927,12 @@ local function truncateLabel(text)
   return string.sub(text, 1, settingMaxLabelChars)
 end
 
-local function workspaceLabel(workspace)
+local function workspaceLabel(workspace, windowCount)
   if settingDisplay == "none" then
     return nil
+  end
+  if settingDisplay == "windows" then
+    return tostring(windowCount or 0)
   end
   if settingDisplay == "name" and workspace.name ~= nil and workspace.name ~= "" then
     return truncateLabel(workspace.name)
@@ -938,15 +942,15 @@ end
 
 -- Chip text: display "none" keeps a single space so the capsule body has
 -- content height (chipWidth/chipHeight then render it as a bare circle/oval
--- per chip_style).
+-- per chip_ratio).
 -- labels_only_when_occupied (native workspaces_widget.cpp:59-66): hide the
 -- label for a non-active, unoccupied workspace even when a display mode is
 -- selected, rendering a bare pill instead.
-local function chipText(workspace, occupied)
+local function chipText(workspace, occupied, windowCount)
   if settingLabelsOnlyWhenOccupied and not occupied and not workspace.isActive then
     return " "
   end
-  local label = workspaceLabel(workspace)
+  local label = workspaceLabel(workspace, windowCount)
   if label == nil then
     return " "
   end
@@ -972,15 +976,14 @@ end
 -- all share one vertical rhythm by default. The indicator column's own
 -- spacer/dot stay fixed-size regardless (rhythm, not content).
 
--- Chip height: chip_style "oval" renders a shorter, wider idle chip while its
--- group is collapsed (rowOpen false); once its group is expanded (or fading
--- in — the caller passes rowOpen from anim.target == 1) the chip snaps to
--- the full-circle height, same as chip_style "circle" at all times. Rounded
--- with +0.5 floor (no bankers'/away-from-zero surprises for the fixed
--- 0..24 setting range).
+-- Chip height: chip_ratio stretches the IDLE chip — width grows and height
+-- shrinks reciprocally, so 100% is a circle, ~140% the compact oval, and
+-- 300-400% approaches a line (height floors at 3px). Once its group is
+-- expanded (or fading in — the caller passes rowOpen from anim.target == 1)
+-- the chip snaps to the full circle regardless of ratio.
 local function chipHeight(rowOpen)
-  if settingChipStyle == "oval" and not rowOpen then
-    return math.floor(settingChipSize * 0.8 + 0.5)
+  if settingChipRatio > 100 and not rowOpen then
+    return math.max(3, math.floor(settingChipSize * 100 / settingChipRatio + 0.5))
   end
   return settingChipSize
 end
@@ -999,8 +1002,8 @@ end
 local function chipWidth(text, rowOpen)
   local len = textLength(text)
   if len <= 1 then
-    if settingChipStyle == "oval" and not rowOpen then
-      return math.floor(settingChipSize * 1.4 + 0.5)
+    if settingChipRatio > 100 and not rowOpen then
+      return math.floor(settingChipSize * settingChipRatio / 100 + 0.5)
     end
     return settingChipSize
   end
@@ -1026,7 +1029,10 @@ end
 -- show_focus_dot gates ONLY the lit fill below, never the geometry — the dot
 -- and its mirror spacer are rhythm (fixed-size, always mounted) regardless of
 -- the setting, so toggling it never shifts layout.
-local function withIndicator(key, content, lit)
+-- dotFill: role string for the dot ("primary" focused, "error" urgent,
+-- "primary/0" inert) — always a present fill (footgun #1). show_focus_dot
+-- gates lighting only; geometry never changes with it (no layout jump).
+local function withIndicator(key, content, dotFill)
   local spacer = ui.row({
     key = key .. "-pad",
     width = 4,
@@ -1039,7 +1045,7 @@ local function withIndicator(key, content, lit)
     width = 4,
     height = 2,
     radius = 1,
-    fill = (lit and settingShowFocusDot) and "primary" or "primary/0",
+    fill = settingShowFocusDot and dotFill or "primary/0",
   })
   return ui.column({
     key = key,
@@ -1108,10 +1114,19 @@ local function buildWindowTile(window, showTitles, hoverName)
     end
   end
 
-  return withIndicator("win-" .. window.id, content, window.isFocused == true)
+  -- Focused wins over urgent (a focused window is being dealt with).
+  local dotFill = "primary/0"
+  if window.isFocused == true then
+    dotFill = "primary"
+  elseif window.isUrgent == true then
+    dotFill = "error"
+  end
+  return withIndicator("win-" .. window.id, content, dotFill)
 end
 
-local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
+-- windowCount is the TRUE window count for the workspace (display "windows"
+-- label) — `windows` may be an emptied tile list under only_active_workspace.
+local function buildWorkspaceGroup(workspace, windows, occupied, showTitles, windowCount)
   -- This workspace's row is open when per-chip hover (0008 patch) has this
   -- group hovered, or — fallback mode — when the whole widget is hovered.
   local rowOpen
@@ -1140,8 +1155,15 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- unpatched reconciler logs "has no prop, ignored" and degrades to the
   -- square look / widget-level expand-all.
   local hoverName = "hoverWs_" .. workspace.id
-  local chipTextValue = chipText(workspace, occupied)
+  local chipTextValue = chipText(workspace, occupied, windowCount)
   local chipHeightValue = chipHeight(rowOpen)
+  -- A squashed idle chip (high chip_ratio) can't fit its 11px label —
+  -- suppress it rather than clip it; the label reappears on the expanded
+  -- circle. Width still derives from the suppressed (single-space) text,
+  -- i.e. the full ratio width.
+  if chipHeightValue < 10 then
+    chipTextValue = " "
+  end
   local chip = ui.button({
     key = "ws-" .. workspace.id,
     text = chipTextValue,
@@ -1167,7 +1189,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- Same symmetric indicator column as window tiles (spacer/content/dot) so
   -- every piece of content in the pill shares one exact centerline; the
   -- chip's dot is never lit (reserved — the active cue is the primary fill).
-  local chipColumn = withIndicator("ws-chipcol-" .. workspace.id, chip, false)
+  local chipColumn = withIndicator("ws-chipcol-" .. workspace.id, chip, "primary/0")
 
   -- Windows row: always mounted (even with zero children for an empty
   -- workspace); `visible` and `opacity` both track the fade (footgun #3 —
@@ -1261,7 +1283,7 @@ render = function()
       if settingOnlyActiveWorkspace and not workspace.isActive then
         tileWindows = {}
       end
-      table.insert(groups, buildWorkspaceGroup(workspace, tileWindows, occupied, showTitles))
+      table.insert(groups, buildWorkspaceGroup(workspace, tileWindows, occupied, showTitles, #windows))
     end
   end
 

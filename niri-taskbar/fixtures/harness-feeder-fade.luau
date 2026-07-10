@@ -50,16 +50,16 @@ HARNESS_INTERVAL_CALLS = {}
 
 settingDisplay = "id" -- idx "1" -> 1 char
 settingChipSize = 16
-settingChipStyle = "oval"
+settingChipRatio = 140
 HARNESS_RENDERS = {}
 render()
 local chip1ByIdx = findNode(lastTree(), "ws-1")
 assert(chip1ByIdx ~= nil, "chip node missing")
--- Idle (collapsed): oval geometry. width = round(16*1.4) = 22,
--- height = round(16*0.8) = 13, radius = height/2 = 6.5.
+-- Idle (collapsed) at ratio 140: width = round(16*1.4) = 22,
+-- height = round(16*100/140) = 11, radius = height/2 = 5.5.
 assert(chip1ByIdx.props.width == 22, "1-char label idle oval chip width mismatch, got " .. tostring(chip1ByIdx.props.width))
-assert(chip1ByIdx.props.height == 13, "1-char label idle oval chip height mismatch, got " .. tostring(chip1ByIdx.props.height))
-assert(chip1ByIdx.props.radius == 6.5, "1-char label idle oval chip radius mismatch, got " .. tostring(chip1ByIdx.props.radius))
+assert(chip1ByIdx.props.height == 11, "1-char label idle oval chip height mismatch, got " .. tostring(chip1ByIdx.props.height))
+assert(chip1ByIdx.props.radius == 5.5, "1-char label idle oval chip radius mismatch, got " .. tostring(chip1ByIdx.props.radius))
 assert(chip1ByIdx.props.paddingH == nil, "chipPaddingH geometry should be gone")
 assert(chip1ByIdx.props.contentAlign == "center", "chip should center its text now that width owns geometry")
 
@@ -73,15 +73,34 @@ assert(chip1Expanded.props.height == 16, "expanded oval chip height should be 16
 assert(chip1Expanded.props.radius == 8, "expanded oval chip radius should be 8, got " .. tostring(chip1Expanded.props.radius))
 expanded = false
 
--- chip_style "circle": always the full circle, collapsed or expanded.
-settingChipStyle = "circle"
+-- chip_ratio 100: always the full circle, collapsed or expanded.
+settingChipRatio = 100
 HARNESS_RENDERS = {}
 render()
 local chip1Circle = findNode(lastTree(), "ws-1")
 assert(chip1Circle.props.width == 16 and chip1Circle.props.height == 16 and chip1Circle.props.radius == 8,
-  "circle style should always render a 16px circle, got w=" .. tostring(chip1Circle.props.width)
+  "ratio 100 should always render a 16px circle, got w=" .. tostring(chip1Circle.props.width)
     .. " h=" .. tostring(chip1Circle.props.height) .. " r=" .. tostring(chip1Circle.props.radius))
-settingChipStyle = "oval"
+
+-- chip_ratio 400: line territory — width 64, height floors low, and the
+-- 11px label no longer fits so it is suppressed (single space) while idle.
+settingChipRatio = 400
+HARNESS_RENDERS = {}
+render()
+local chip1Line = findNode(lastTree(), "ws-1")
+assert(chip1Line.props.width == 64, "ratio 400 idle width mismatch, got " .. tostring(chip1Line.props.width))
+assert(chip1Line.props.height == 4, "ratio 400 idle height mismatch, got " .. tostring(chip1Line.props.height))
+assert(chip1Line.props.text == " ", "label should be suppressed when the idle chip is too flat, got " .. tostring(chip1Line.props.text))
+
+-- display "windows": label is the workspace's TRUE window count.
+settingChipRatio = 100
+settingDisplay = "windows"
+HARNESS_RENDERS = {}
+render()
+local chip1Count = findNode(lastTree(), "ws-1")
+assert(chip1Count.props.text == "1", "display=windows should label the chip with its window count, got " .. tostring(chip1Count.props.text))
+settingDisplay = "id"
+settingChipRatio = 140
 
 local chipDot1 = findNode(lastTree(), "ws-chipcol-1-dot")
 assert(chipDot1 ~= nil, "chip dot slot missing")
@@ -394,3 +413,27 @@ assert(groupTinted.props.fill == "surface_variant/0.50", "pill_tint=50 should yi
 assert(groupTinted.props.border == "primary/0.55", "pill_tint=50 should yield a 0.55 border ((50/100)+0.05), got " .. tostring(groupTinted.props.border))
 settingPillTint = 30
 expanded = false
+
+-- ---- urgent-window dot: error fill when urgent and unfocused; focused
+-- wins over urgent; show_focus_dot=false suppresses both ------------------
+windowsById[100].isFocused = false
+windowsById[100].isUrgent = true
+HARNESS_RENDERS = {}
+render()
+local dotUrgent = findNode(lastTree(), "win-100-dot")
+assert(dotUrgent.props.fill == "error", "urgent unfocused window's dot should be error, got " .. tostring(dotUrgent.props.fill))
+
+windowsById[100].isFocused = true
+HARNESS_RENDERS = {}
+render()
+local dotFocusedUrgent = findNode(lastTree(), "win-100-dot")
+assert(dotFocusedUrgent.props.fill == "primary", "focused wins over urgent for the dot, got " .. tostring(dotFocusedUrgent.props.fill))
+
+settingShowFocusDot = false
+HARNESS_RENDERS = {}
+render()
+local dotSuppressed = findNode(lastTree(), "win-100-dot")
+assert(dotSuppressed.props.fill == "primary/0", "show_focus_dot=false must suppress urgent dots too, got " .. tostring(dotSuppressed.props.fill))
+assert(dotSuppressed.props.height == 2, "dot geometry must not change with show_focus_dot")
+settingShowFocusDot = true
+windowsById[100].isUrgent = false

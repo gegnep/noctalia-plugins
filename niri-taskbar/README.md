@@ -74,7 +74,7 @@ widget.
 |---|---|---|---|
 | `focused_output_only` | bool | `false` | Show only the focused monitor's workspaces instead of this monitor's |
 | `show_empty_workspaces` | bool | `true` | Show chips for workspaces with no windows (the active workspace is always shown) |
-| `display` | select | `id` | What each chip shows: the workspace index (`id`), its name falling back to the index (`name`), or a bare pill (`none`) |
+| `display` | select | `id` | What each chip shows: the workspace index (`id`), its name falling back to the index (`name`), its window count (`windows`), or a bare pill (`none`) |
 | `show_window_titles` | bool | `false` | Show a truncated window title next to each window tile (always off in a vertical/side bar) |
 | `max_windows_per_workspace` | int | `10` | Cap on expanded window tiles per workspace before collapsing the rest into a `+N` label |
 | `labels_only_when_occupied` | bool | `false` | Hide the label on empty, inactive workspace chips, leaving a bare pill |
@@ -82,11 +82,11 @@ widget.
 | `only_active_workspace` | bool | `false` | Show window tiles only for each monitor's active workspace; other workspace chips still render |
 | `icon_size` | int | `16` | Window app icon size in pixels |
 | `chip_size` | int | `16` | Workspace chip diameter |
-| `chip_style` | select | `oval` | Idle chip shape: `oval` is a compact lying oval that rounds into a circle when its group expands; `circle` is always a circle |
+| `chip_ratio` | int | `140` | Idle chip width-to-height ratio (%): 100 is a circle, 140 a compact oval, 300+ approaches a line; chips always round into circles on expand (labels hide when the chip is too flat to fit them) |
 | `chip_spacing` | int | `3` | Spacing between workspaces |
 | `collapse_delay_ms` | int | `1250` | Hover linger before collapse, in milliseconds |
 | `expand_speed` | select | `normal` | Expand animation speed: `fast`, `normal`, or `slow` |
-| `show_focus_dot` | bool | `true` | Show a dot under the focused window's tile |
+| `show_focus_dot` | bool | `true` | Show a dot under the focused (primary) and urgent (error-colored) windows' tiles |
 | `pill_tint` | int | `30` | Expanded pill tint strength, as a percentage |
 
 ### Development
