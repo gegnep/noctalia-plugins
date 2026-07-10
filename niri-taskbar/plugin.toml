@@ -1,0 +1,14 @@
+id = "gegnep/niri-taskbar"
+name = "Niri Taskbar"
+version = "0.1.0"
+min_noctalia = "5.0.0"
+author = "pengeg"
+license = "MIT"
+icon = "layout-grid"
+description = "Combined niri workspace/taskbar widget: workspace chips that expand on hover to show each workspace's windows."
+tags = ["niri", "workspaces", "taskbar"]
+dependencies = []
+
+[[widget]]
+id = "taskbar"
+entry = "taskbar.luau"
