@@ -457,10 +457,23 @@ local function registerWorkspaceCallback(workspace)
   env["hoverWs_" .. workspace.id] = function(state)
     perChipHover = true
     if state == "true" then
+      -- Chip-to-chip SWITCH: snap the old row shut in the SAME render as
+      -- the new one appears. Letting the old row fade out (~195ms) while
+      -- the new one is already open produced two staggered width jumps per
+      -- switch — visible stutter, worse in a centered bar section where
+      -- every width change re-centers the widget. One swap = one jump.
+      -- The full fade-out is kept for the leave-to-nothing path (grace
+      -- expiry in update()), where no second jump follows.
+      local previous = expandedWsId
+      if previous ~= nil and previous ~= workspace.id then
+        local old = rowAnim[previous]
+        if old ~= nil then
+          old.opacity = 0
+          old.target = 0
+        end
+      end
       -- expandedWsId flips here; buildWorkspaceGroup derives every row's
-      -- rowAnim.target from it on the render() below, so the previously
-      -- open group's row is caught mid-render and starts fading out the
-      -- same tick — no separate "close the old one" bookkeeping needed.
+      -- rowAnim.target from it on the render() below.
       expandedWsId = workspace.id
       collapsePending = false
       graceMs = 0
@@ -927,6 +940,36 @@ local function windowTileText(window, showTitles)
   return initial
 end
 
+-- Symmetric indicator column: [top spacer, content, dot], gaps 1. The
+-- spacer mirrors the dot slot exactly (2px + 1px gap each side) so the
+-- content's visual center IS the column center — without it the dot slot
+-- pushed content up ~2.5px, crowding the pill's top edge (seen live as
+-- top-clipped circles). Both chips and window tiles use this, so all
+-- content shares one centerline. Total height: 2+1+16+1+2 = 22, which fits
+-- the ~23px bar content slot that clamped taller layouts into ovals.
+-- Spacer/dot fills are ALWAYS present (footgun #1); the spacer is never lit.
+local function withIndicator(key, content, lit)
+  local spacer = ui.row({
+    key = key .. "-pad",
+    width = 4,
+    height = 2,
+    radius = 1,
+    fill = "primary/0",
+  })
+  local dot = ui.row({
+    key = key .. "-dot",
+    width = 4,
+    height = 2,
+    radius = 1,
+    fill = lit and "primary" or "primary/0",
+  })
+  return ui.column({
+    key = key,
+    align = "center",
+    gap = 1,
+  }, { spacer, content, dot })
+end
+
 -- Window tile: a keyed column ("win-<id>", stable across icon/fallback/
 -- titled variants so the reconciler retains it) wrapping the interactive
 -- content (button or image[+label]) and a focused-window dot. The dot
@@ -987,19 +1030,7 @@ local function buildWindowTile(window, showTitles, hoverName)
     end
   end
 
-  local dot = ui.row({
-    key = "win-" .. window.id .. "-dot",
-    width = 4,
-    height = 3,
-    radius = 2,
-    fill = window.isFocused == true and "primary" or "primary/0",
-  })
-
-  return ui.column({
-    key = "win-" .. window.id,
-    align = "center",
-    gap = 2,
-  }, { content, dot })
+  return withIndicator("win-" .. window.id, content, window.isFocused == true)
 end
 
 local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
@@ -1051,23 +1082,10 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     onHover = hoverName,
   })
 
-  -- Symmetric dot slot (footgun #1 — fill always present, never lit this
-  -- iteration): mirrors the window-tile column's [content, gap 2, dot 3]
-  -- shape so the chip and its tiles share one vertical center instead of
-  -- the chip sitting ~2.5px low against a bare 16px button.
-  local chipDot = ui.row({
-    key = "ws-" .. workspace.id .. "-dot",
-    width = 4,
-    height = 3,
-    radius = 2,
-    fill = "primary/0",
-  })
-
-  local chipColumn = ui.column({
-    key = "ws-chipcol-" .. workspace.id,
-    align = "center",
-    gap = 2,
-  }, { chip, chipDot })
+  -- Same symmetric indicator column as window tiles (spacer/content/dot) so
+  -- every piece of content in the pill shares one exact centerline; the
+  -- chip's dot is never lit (reserved — the active cue is the primary fill).
+  local chipColumn = withIndicator("ws-chipcol-" .. workspace.id, chip, false)
 
   -- Windows row: always mounted (even with zero children for an empty
   -- workspace); `visible` and `opacity` both track the fade (footgun #3 —
@@ -1110,15 +1128,21 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- mid-fade — an empty expanded row has no icons to contain.
   local tintOpacity = occupied and anim.opacity or 0
   local capsuleFill = "surface_variant/" .. string.format("%.2f", 0.30 * tintOpacity)
+  -- "Apps inside the pill with a highlight around it": a primary-tinted
+  -- hairline that fades in step with the tint (explicit both ways — alpha 0
+  -- when closed, never an absent prop).
+  local capsuleBorder = "primary/" .. string.format("%.2f", 0.35 * tintOpacity)
 
   return ui.row({
     key = "ws-group-" .. workspace.id,
     gap = 3,
     align = "center",
     paddingH = 3,
-    paddingV = 1,
+    paddingV = 0,
     fill = capsuleFill,
-    radius = 12,
+    border = capsuleBorder,
+    borderWidth = 1,
+    radius = 11,
   }, { chipColumn, windowsRow })
 end
 

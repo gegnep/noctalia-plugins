@@ -58,13 +58,20 @@ assert(chip1ByIdx.props.height == 16, "chip height should be 16 (matches baseGly
 assert(chip1ByIdx.props.paddingH == nil, "chipPaddingH geometry should be gone")
 assert(chip1ByIdx.props.contentAlign == "center", "chip should center its text now that width owns geometry")
 
-local chipDot1 = findNode(lastTree(), "ws-1-dot")
+local chipDot1 = findNode(lastTree(), "ws-chipcol-1-dot")
 assert(chipDot1 ~= nil, "chip dot slot missing")
-assert(chipDot1.props.width == 4 and chipDot1.props.height == 3 and chipDot1.props.radius == 2, "chip dot geometry mismatch")
+assert(chipDot1.props.width == 4 and chipDot1.props.height == 2 and chipDot1.props.radius == 1, "chip dot geometry mismatch")
 assert(chipDot1.props.fill == "primary/0", "chip dot slot should always be reserved-but-unlit, got " .. tostring(chipDot1.props.fill))
+
+local chipPad1 = findNode(lastTree(), "ws-chipcol-1-pad")
+assert(chipPad1 ~= nil, "chip top spacer missing")
+assert(chipPad1.props.height == 2 and chipPad1.props.fill == "primary/0", "chip top spacer must mirror the dot slot invisibly")
 
 local chipCol1 = findNode(lastTree(), "ws-chipcol-1")
 assert(chipCol1 ~= nil, "chip column wrapper missing")
+
+local winPad100 = findNode(lastTree(), "win-100-pad")
+assert(winPad100 ~= nil, "window tile top spacer missing (symmetry with chip column)")
 
 settingDisplay = "name" -- name "abc" -> 3 chars
 settingMaxLabelChars = 20 -- default is 1 (v4 parity); widen so "abc" isn't truncated to "a"
@@ -84,6 +91,7 @@ render()
 local dot100 = findNode(lastTree(), "win-100-dot")
 assert(dot100 ~= nil, "dot node missing")
 assert(dot100.props.fill == "primary", "focused window's dot should be filled primary, got " .. tostring(dot100.props.fill))
+assert(dot100.props.height == 2 and dot100.props.radius == 1, "window dot geometry mismatch")
 
 windowsById[100].isFocused = false
 HARNESS_RENDERS = {}
@@ -138,8 +146,9 @@ assert(windowsRowOpen.props.opacity == 1, "fully open row should render at opaci
 
 local groupOpen = findNode(lastTree(), "ws-group-1")
 assert(groupOpen.props.fill == "surface_variant/0.30", "settled open+occupied pill fill mismatch, got " .. tostring(groupOpen.props.fill))
-assert(groupOpen.props.radius == 12, "pill radius mismatch, got " .. tostring(groupOpen.props.radius))
-assert(groupOpen.props.paddingH == 3 and groupOpen.props.paddingV == 1, "pill padding mismatch")
+assert(groupOpen.props.radius == 11, "pill radius mismatch, got " .. tostring(groupOpen.props.radius))
+assert(groupOpen.props.paddingH == 3 and groupOpen.props.paddingV == 0, "pill padding mismatch")
+assert(groupOpen.props.border == "primary/0.35" and groupOpen.props.borderWidth == 1, "settled-open pill should carry the primary hairline, got " .. tostring(groupOpen.props.border))
 
 -- ---- fixture (a): grace accumulator fires at exactly COLLAPSE_GRACE_MS,
 -- driven purely by 250ms ticks (idle -> no animation in flight) ----------
@@ -270,3 +279,18 @@ assert(not resyncFiredSince(asyncBefore), "resync fired before crossing " .. tos
 update() -- crosses 30000ms (160 + 120*250 = 30160)
 assert(resyncFiredSince(asyncBefore), "resync did not fire once RESYNC_MS was crossed")
 assert(resyncMs == 0, "resync accumulator should reset once it fires")
+
+-- ---- switch handoff: hovering B while A is open snaps A shut in the same
+-- render (one width jump per switch, not two staggered ones) --------------
+workspacesById[2] = { id = 2, idx = 2, name = nil, output = "DP-3", isActive = false, isFocused = false, isUrgent = false }
+render() -- registers hoverWs_2 for the new workspace
+perChipHover = true
+expandedWsId = 1
+rowAnim[1] = { opacity = 1, target = 1 }
+rowAnim[2] = { opacity = 0, target = 0 }
+env["hoverWs_2"]("true")
+assert(expandedWsId == 2, "switch should move expansion to workspace 2")
+assert(rowAnim[1].opacity == 0 and rowAnim[1].target == 0, "old row must snap fully closed on switch, got opacity=" .. tostring(rowAnim[1].opacity))
+local oldRow = findNode(lastTree(), "wins-1")
+assert(oldRow.props.visible == false, "old row must be hidden in the same render as the switch")
+assert(rowAnim[2].target == 1, "new row should be fading in after the switch")

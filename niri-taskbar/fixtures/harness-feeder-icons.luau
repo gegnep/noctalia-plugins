@@ -87,7 +87,7 @@ assert(icon.props.border == nil, "icon focus-border cue should be removed entire
 
 local dot10 = findNode(tile10, "win-10-dot")
 assert(dot10 ~= nil and dot10.type == "row", "dot should be a row")
-assert(dot10.props.width == 4 and dot10.props.height == 3 and dot10.props.radius == 2, "dot geometry mismatch")
+assert(dot10.props.width == 4 and dot10.props.height == 2 and dot10.props.radius == 1, "dot geometry mismatch")
 assert(dot10.props.fill == "primary/0", "unfocused dot should be transparent")
 
 local tile12 = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-12")
