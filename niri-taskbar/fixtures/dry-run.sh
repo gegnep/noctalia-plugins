@@ -92,5 +92,6 @@ run_snapshot_feeder
 run_plain_feeder "defensive" "harness-feeder-defensive.luau"
 run_stream_feeder "callbacks" "harness-feeder-callbacks.luau"
 run_icons_feeder
+run_plain_feeder "fade" "harness-feeder-fade.luau"
 
 exit "$failed"

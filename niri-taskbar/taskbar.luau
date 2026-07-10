@@ -17,9 +17,26 @@ local expanded = false
 -- again whenever the pointer crosses a gap between buttons) or any click
 -- cancels it. Cost: resting motionless on a button collapses after the
 -- grace period — fixed properly by the v2 per-node-hover host patch.
-local COLLAPSE_GRACE_TICKS = 5 -- ~1.25s at the 250ms update interval
+local COLLAPSE_GRACE_MS = 1250 -- ~1.25s, was 5 ticks at the 250ms update interval
 local collapsePending = false
-local collapseTicks = 0
+local graceMs = 0
+
+-- Per-workspace expand/collapse fade, driven from update() ticks. opacity is
+-- the CURRENT rendered value (0..1), target is where it's heading; a row
+-- stays mounted+visible while opacity > 0 OR target == 1 (fading in), and
+-- only drops to visible=false once a closing row's opacity reaches 0 exactly
+-- (see stepRowAnims). Lazily populated per workspace id by ensureRowAnim.
+local rowAnim = {}
+local FADE_TAU_MS = 50 -- exponential ease-out time constant; ~3*tau (150ms) to settle, matching the ~140ms target
+local FADE_SNAP_EPS = 0.02
+
+-- Update interval: 250ms at rest, dropped to 16ms while any rowAnim is
+-- mid-flight so the fade steps smoothly, restored once all are settled.
+-- currentIntervalMs mirrors the interval actually in effect (only call
+-- noctalia.setUpdateInterval when it changes) and doubles as the per-tick
+-- elapsed-time estimate for the grace/resync ms accumulators below.
+local currentIntervalMs = 250
+local RESYNC_MS = 30000 -- was resyncTicks < 120 at the 250ms interval
 
 -- Per-chip hover (0008 host patch): latched true by the first per-node
 -- hover event, which switches the widget from expand-all to per-workspace
@@ -32,7 +49,7 @@ local workspacesById = {}
 local windowsById = {}
 local stateGeneration = 0
 local activeStreamToken = ""
-local resyncTicks = 0
+local resyncMs = 0
 local fallbackTokenCounter = 0
 
 -- P2 settings cache (read via barWidget.getConfig, refreshed by onConfigChanged).
@@ -341,6 +358,70 @@ local function bumpAndRender()
   render()
 end
 
+local function ensureRowAnim(wsId)
+  local anim = rowAnim[wsId]
+  if anim == nil then
+    anim = { opacity = 0, target = 0 }
+    rowAnim[wsId] = anim
+  end
+  return anim
+end
+
+-- Exponential ease-out step: closes the opacity/target gap by a fraction of
+-- dt/FADE_TAU_MS each tick (clamped to [0,1] so a large dt — e.g. the first
+-- tick after an idle 250ms period, before the interval drops to 16ms —
+-- snaps straight to target instead of overshooting). A row within
+-- FADE_SNAP_EPS of its target snaps exactly onto it so fades terminate at a
+-- clean 0/1 rather than approaching asymptotically forever. Returns
+-- (animating, changed): animating is true if any row is still mid-flight
+-- after this step (interval should stay at 16ms); changed is true if any
+-- opacity value moved at all this tick (including the final snap-to-target
+-- frame), meaning a render is needed to show it.
+local function stepRowAnims(dt)
+  local animating = false
+  local changed = false
+  for _, anim in pairs(rowAnim) do
+    if anim.opacity ~= anim.target then
+      changed = true
+      local factor = dt / FADE_TAU_MS
+      if factor > 1 then
+        factor = 1
+      elseif factor < 0 then
+        factor = 0
+      end
+      anim.opacity = anim.opacity + (anim.target - anim.opacity) * factor
+      if math.abs(anim.target - anim.opacity) < FADE_SNAP_EPS then
+        anim.opacity = anim.target
+      end
+    end
+    if anim.opacity ~= anim.target then
+      animating = true
+    end
+  end
+  return animating, changed
+end
+
+-- Drop the tick interval to 16ms the instant any row's target and opacity
+-- disagree (called from render(), so a target flip is caught the same tick
+-- it happens — not one update() cycle later — avoiding a cold-start tick at
+-- the old 250ms interval that would otherwise snap the fade in one frame);
+-- restores to the 250ms rest interval once every row is settled. Guarded so
+-- noctalia.setUpdateInterval is only called when the desired value changes.
+local function syncUpdateInterval()
+  local animating = false
+  for _, anim in pairs(rowAnim) do
+    if anim.opacity ~= anim.target then
+      animating = true
+      break
+    end
+  end
+  local desired = animating and 16 or 250
+  if desired ~= currentIntervalMs then
+    currentIntervalMs = desired
+    noctalia.setUpdateInterval(desired)
+  end
+end
+
 local function windowClosedId(payload)
   if type(payload) == "number" then
     return payload
@@ -376,17 +457,22 @@ local function registerWorkspaceCallback(workspace)
   env["hoverWs_" .. workspace.id] = function(state)
     perChipHover = true
     if state == "true" then
+      -- expandedWsId flips here; buildWorkspaceGroup derives every row's
+      -- rowAnim.target from it on the render() below, so the previously
+      -- open group's row is caught mid-render and starts fading out the
+      -- same tick — no separate "close the old one" bookkeeping needed.
       expandedWsId = workspace.id
       collapsePending = false
+      graceMs = 0
       render()
     else
       collapsePending = true
-      collapseTicks = 0
+      graceMs = 0
     end
   end
 
   env[wsName] = function()
-    collapseTicks = 0 -- click proves the pointer is inside the widget
+    graceMs = 0 -- click proves the pointer is inside the widget
 
     local current = workspacesById[workspace.id]
     if current == nil then
@@ -411,7 +497,7 @@ local function registerWindowCallback(window)
   local winName = "focusWin_" .. window.id
   registeredWindowCallbacks[window.id] = winName
   env[winName] = function()
-    collapseTicks = 0
+    graceMs = 0
     noctalia.runAsync("niri msg action focus-window --id " .. tostring(window.id))
   end
   return winName
@@ -430,6 +516,15 @@ pruneCallbackEnv = function()
     if windowsById[id] == nil then
       env[name] = nil
       registeredWindowCallbacks[id] = nil
+    end
+  end
+
+  for id, anim in pairs(rowAnim) do
+    -- Only drop a fully-settled entry for a gone workspace (opacity ==
+    -- target == 0) — a workspace that vanishes mid-fade keeps animating so
+    -- an in-flight closing transition still finishes smoothly.
+    if workspacesById[id] == nil and anim.opacity == 0 and anim.target == 0 then
+      rowAnim[id] = nil
     end
   end
 end
@@ -615,7 +710,7 @@ function onHover(state)
       collapsePending = false
     else
       collapsePending = true
-      collapseTicks = 0
+      graceMs = 0
     end
     return
   end
@@ -623,35 +718,60 @@ function onHover(state)
     collapsePending = false
     if not expanded then
       expanded = true
-      render()
+      render() -- buildWorkspaceGroup derives every row's target = 1 (fallback mode: shared)
     end
   else
     collapsePending = true
-    collapseTicks = 0
+    graceMs = 0
   end
 end
 
 -- Widget tick (noctalia.setUpdateInterval below): drives the grace-period
--- countdown and the niri liveness/resync pass.
+-- countdown, the per-workspace fade, and the niri liveness/resync pass.
+-- dt is the elapsed time this tick represents — currentIntervalMs, the
+-- interval actually in effect when the host scheduled this call (NOT the
+-- interval this same tick may switch to for the future, which only takes
+-- effect on the NEXT call). Both the grace and resync accumulators use ms,
+-- not tick counts, so alternating between the 250ms rest interval and the
+-- 16ms mid-fade interval never shortens their real-time behavior.
 function update()
+  local dt = currentIntervalMs
+
+  -- Step any ALREADY mid-flight rows first, using dt = the interval that
+  -- was actually in effect for the time that just elapsed. This must run
+  -- BEFORE the grace check below: if grace fires this same tick, it flips
+  -- a row's target for the first time just now — that row hasn't accrued
+  -- any elapsed fade time yet, so it must NOT be stepped with this tick's
+  -- (possibly large, 250ms) dt or it would snap straight to the new target
+  -- instead of beginning a smooth fade next tick.
+  local _, changed = stepRowAnims(dt)
+  if changed then
+    render()
+  end
+
   if collapsePending then
-    collapseTicks = collapseTicks + 1
-    if collapseTicks >= COLLAPSE_GRACE_TICKS then
+    graceMs = graceMs + dt
+    if graceMs >= COLLAPSE_GRACE_MS then
       collapsePending = false
+      graceMs = 0
       if perChipHover then
         expandedWsId = nil
       else
         expanded = false
       end
-      render()
+      render() -- derives every row's target = 0; syncUpdateInterval below queues 16ms for the fade starting next tick
     end
+  else
+    graceMs = 0
   end
 
-  resyncTicks = resyncTicks + 1
-  if resyncTicks < 120 then
+  syncUpdateInterval()
+
+  resyncMs = resyncMs + dt
+  if resyncMs < RESYNC_MS then
     return
   end
-  resyncTicks = 0
+  resyncMs = 0
 
   local checkedToken = activeStreamToken
   -- Bracket trick: the probe runs under /bin/sh -c whose own argv contains
@@ -750,9 +870,8 @@ local function workspaceLabel(workspace)
   return tostring(workspace.idx)
 end
 
--- Chip width: native active pills are ~2.2x wider; with the 0007 host patch
--- (button radius/padding props) this is a real paddingH inset. Display
--- "none" keeps a single space so the capsule body has content height.
+-- Chip text: display "none" keeps a single space so the capsule body has
+-- content height (chipWidth then renders it as a bare 22px circle).
 -- labels_only_when_occupied (native workspaces_widget.cpp:59-66): hide the
 -- label for a non-active, unoccupied workspace even when a display mode is
 -- selected, rendering a bare pill instead.
@@ -767,11 +886,32 @@ local function chipText(workspace, occupied)
   return label
 end
 
-local function chipPaddingH(workspace)
-  if workspace.isActive then
-    return 14
+-- utf8-aware codepoint count for chip width, falling back to byte length if
+-- the utf8 library or a given string isn't well-formed (pcall guards a
+-- malformed sequence throwing inside utf8.len).
+local function textLength(text)
+  if type(utf8) == "table" and type(utf8.len) == "function" then
+    local ok, len = pcall(utf8.len, text)
+    if ok and type(len) == "number" then
+      return len
+    end
   end
-  return 7
+  return string.len(text)
+end
+
+-- Perfect-circle chips: a single-character label (digit, bare space for
+-- display "none") gets width == height (22) for a true circle; anything
+-- longer (workspace names, two-digit ids) widens into a capsule at 7px per
+-- extra character. Width is ALWAYS computed and set (footgun #1) — geometry
+-- no longer comes from paddingH, so there is no "unset" fallback to fall
+-- back to. The active workspace uses this same formula: the primary-fill
+-- variant is the whole active cue, not extra width.
+local function chipWidth(text)
+  local len = textLength(text)
+  if len <= 1 then
+    return 22
+  end
+  return 22 + 7 * (len - 1)
 end
 
 local function windowTileText(window, showTitles)
@@ -782,17 +922,26 @@ local function windowTileText(window, showTitles)
   return initial
 end
 
+-- Window tile: a keyed column ("win-<id>", stable across icon/fallback/
+-- titled variants so the reconciler retains it) wrapping the interactive
+-- content (button or image[+label]) and a focused-window dot. The dot
+-- replaces the old border-cue-on-image / variant-cue-on-button focus
+-- indicators entirely — it is the ONE focus cue now, always mounted, fill
+-- explicit both ways (footgun #1). onClick/onHover live on the content leaf
+-- (columns/rows aren't in kFlex's onClick/onHover set) — the dot is inert.
 local function buildWindowTile(window, showTitles, hoverName)
   local onClick = registerWindowCallback(window)
   local iconPath = resolveWindowIcon(window.appId)
+  local content
+
   if iconPath == nil then
-    -- No icon resolved: preserve the P2 button fallback exactly, including
-    -- focus variant and the shared per-workspace hover callback.
-    return ui.button({
-      key = "win-" .. window.id,
+    -- No icon resolved: letter-tile fallback. variant is ALWAYS "ghost" now
+    -- (the focused cue moved to the dot below).
+    content = ui.button({
+      key = "win-" .. window.id .. "-fallback",
       text = windowTileText(window, showTitles),
       fontSize = 11,
-      variant = window.isFocused == true and "secondary" or "ghost",
+      variant = "ghost",
       selected = false,
       height = 22,
       radius = 8,
@@ -801,53 +950,51 @@ local function buildWindowTile(window, showTitles, hoverName)
       onClick = onClick,
       onHover = hoverName,
     })
-  end
-
-  local iconSize = settingIconSize
-  if showTitles then
-    return ui.row({
-      key = "win-" .. window.id,
-      gap = 4,
-      align = "center",
-    }, {
-      ui.image({
-        key = "win-" .. window.id .. "-icon",
-        path = iconPath,
-        width = iconSize,
-        height = iconSize,
-        radius = 4,
-        fit = "contain",
-        -- Focused-window cue for icon tiles: images have no variant, so a
-        -- secondary border carries the cue (transparent when unfocused —
-        -- explicit both ways per footgun #1).
-        border = window.isFocused == true and "secondary" or "secondary/0",
-        borderWidth = 1,
-        onClick = onClick,
-        onHover = hoverName,
-      }),
-      ui.label({
-        key = "win-" .. window.id .. "-title",
-        text = truncateTitle(window.title),
-        fontSize = 11,
-        color = "on_surface",
-      }),
+  else
+    local iconSize = settingIconSize
+    local icon = ui.image({
+      key = "win-" .. window.id .. "-icon",
+      path = iconPath,
+      width = iconSize,
+      height = iconSize,
+      radius = 4,
+      fit = "contain",
+      onClick = onClick,
+      onHover = hoverName,
     })
+
+    if showTitles then
+      content = ui.row({
+        key = "win-" .. window.id .. "-body",
+        gap = 4,
+        align = "center",
+      }, {
+        icon,
+        ui.label({
+          key = "win-" .. window.id .. "-title",
+          text = truncateTitle(window.title),
+          fontSize = 11,
+          color = "on_surface",
+        }),
+      })
+    else
+      content = icon
+    end
   end
 
-  return ui.image({
-    key = "win-" .. window.id,
-    path = iconPath,
-    width = iconSize,
-    height = iconSize,
-    radius = 4,
-    fit = "contain",
-    -- Focused-window cue (images have no variant): secondary border,
-    -- transparent when unfocused — explicit both ways per footgun #1.
-    border = window.isFocused == true and "secondary" or "secondary/0",
-    borderWidth = 1,
-    onClick = onClick,
-    onHover = hoverName,
+  local dot = ui.row({
+    key = "win-" .. window.id .. "-dot",
+    width = 4,
+    height = 3,
+    radius = 2,
+    fill = window.isFocused == true and "primary" or "primary/0",
   })
+
+  return ui.column({
+    key = "win-" .. window.id,
+    align = "center",
+    gap = 2,
+  }, { content, dot })
 end
 
 local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
@@ -860,31 +1007,48 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     rowOpen = expanded
   end
 
+  -- Derive this row's fade target straight from rowOpen every render — the
+  -- single source of truth is the expandedWsId/expanded booleans above, not
+  -- imperative pokes from the hover callbacks. That makes a hover-triggered
+  -- switch self-healing: the previously-open group is rebuilt in this same
+  -- render() pass with rowOpen now false, so its rowAnim.target flips to 0
+  -- and it starts fading out immediately — no separate "close the old one"
+  -- bookkeeping, and re-opening mid-fade just flips target back without a
+  -- restart pop (opacity keeps animating from wherever it currently is).
+  local anim = ensureRowAnim(workspace.id)
+  anim.target = rowOpen and 1 or 0
+
   -- Chip: variant/selected/onClick always explicitly set (footgun #1 —
-  -- absent props never clear on a retained node).
-  -- radius/paddingH need the 0007 host patch, onHover the 0008 patch; an
+  -- absent props never clear on a retained node). Width is ALWAYS computed
+  -- (perfect-circle for 1-char labels, capsule beyond that) — geometry now
+  -- comes entirely from width, not paddingH.
+  -- radius/width need the 0007 host patch, onHover the 0008 patch; an
   -- unpatched reconciler logs "has no prop, ignored" and degrades to the
   -- square look / widget-level expand-all.
   local hoverName = "hoverWs_" .. workspace.id
+  local chipTextValue = chipText(workspace, occupied)
   local chip = ui.button({
     key = "ws-" .. workspace.id,
-    text = chipText(workspace, occupied),
+    text = chipTextValue,
     fontSize = 11,
     variant = chipVariant(workspace, occupied),
     selected = false,
     -- height beats Button's 32px minHeight floor (style.h controlHeightSm);
-    -- radius = height/2 makes a true capsule — a one-char chip is a circle.
+    -- radius = height/2 + contentAlign=center makes a true circle for a
+    -- 1-char label at width==height==22, capsule beyond that.
     height = 22,
+    width = chipWidth(chipTextValue),
     radius = 11,
-    paddingH = chipPaddingH(workspace),
-    paddingV = 2,
+    contentAlign = "center",
     onClick = registerWorkspaceCallback(workspace),
     onHover = hoverName,
   })
 
   -- Windows row: always mounted (even with zero children for an empty
-  -- workspace), only `visible` flips. Recreating this subtree on
-  -- expand/collapse would read as a visible flash (footgun #3).
+  -- workspace); `visible` and `opacity` both track the fade (footgun #3 —
+  -- recreating this subtree on expand/collapse would read as a flash).
+  -- visible stays true for the whole fade-out (opacity carries the actual
+  -- disappearance) and only drops once a closing row's opacity reaches 0.
   local windowButtons = {}
   local cap = settingMaxWindowsPerWorkspace
   local shown = 0
@@ -905,7 +1069,9 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   end
   local windowsRow = ui.row({
     key = "wins-" .. workspace.id,
-    visible = rowOpen,
+    visible = anim.opacity > 0 or anim.target == 1,
+    opacity = anim.opacity,
+    align = "center",
     gap = 4,
   }, windowButtons)
 
@@ -914,9 +1080,11 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- workspace reads as a single capsule. fill is explicit BOTH ways
   -- (footgun #1 — absent props never clear on a retained node): a
   -- collapsed or empty group gets a fully transparent fill of the same
-  -- role so the prop is always present, never omitted.
+  -- role so the prop is always present, never omitted. Keys off
+  -- target/occupied (not opacity) so the capsule fill doesn't pop against
+  -- the smoother row-opacity fade.
   local capsuleFill = "surface_variant/0"
-  if rowOpen and occupied then
+  if anim.target == 1 and occupied then
     capsuleFill = "surface_variant/0.15"
   end
 
@@ -987,6 +1155,12 @@ render = function()
   -- example/declarative.luau:15.
   local container = vertical and ui.column or ui.row
   barWidget.render(container({ gap = 6, align = "center" }, groups))
+
+  -- Every workspace's rowAnim.target was just set above (buildWorkspaceGroup);
+  -- sync the tick interval to whether any row is now mid-flight so a
+  -- hover-triggered target flip drops to 16ms this same render, not one
+  -- update() tick later.
+  syncUpdateInterval()
 end
 
 -- ============================================================

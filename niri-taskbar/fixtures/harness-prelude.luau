@@ -9,6 +9,7 @@ HARNESS_ASYNC = {}
 HARNESS_RENDERS = {}
 HARNESS_NOTIFICATIONS = {}
 HARNESS_INTERVAL_MS = nil
+HARNESS_INTERVAL_CALLS = {}
 
 -- Minimal JSON decoder (objects, arrays, strings, numbers, true/false/null).
 -- Covers exactly the shapes in the fixture dumps; null object fields decode as
@@ -215,6 +216,7 @@ noctalia = {
   end,
   setUpdateInterval = function(ms)
     HARNESS_INTERVAL_MS = ms
+    table.insert(HARNESS_INTERVAL_CALLS, ms)
   end,
   json = { decode = jsonDecode, encode = function(v) return "{}" end },
 }
