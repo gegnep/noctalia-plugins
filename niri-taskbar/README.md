@@ -16,20 +16,38 @@ niri only — it drives itself entirely off `niri msg --json event-stream`.
 ### Features
 
 - Workspace chips matching the native workspaces widget's palette: active =
-  primary, occupied = secondary, urgent = error, empty = muted; idle chips
-  are compact ovals (or circles — configurable) that round out on hover
-- Hover a chip to expand it into app-icon tiles for its windows; click a
-  tile to focus that window
+  primary, occupied = secondary, urgent = error, empty = muted
+- Idle chips are stretchable via `chip_ratio`, from a 100% circle to a 400%
+  line (default 140%, a compact oval), and always round back into a circle
+  on hover
+- Hover a chip to expand it into a tinted pill — a primary hairline border
+  around app-icon tiles for every window on that workspace — fading in and
+  out at a configurable speed (`expand_speed`); click a tile to focus that
+  window
+- The focused window's tile gets a primary dot underneath it; an urgent
+  window gets an error-colored dot instead (`show_focus_dot`)
+- Four label modes (`display`): workspace id, name (falls back to id),
+  window count, or a bare pill with no label
 - Per-workspace hover: hovering one chip expands only that chip, not every
   chip on the bar (needs the 0008 host patch — see Requirements)
 - Click a chip to focus its workspace; on a multi-monitor setup this chains
   a focus-monitor call first so cross-monitor chip clicks land correctly
 - Windows within an expanded chip are ordered by niri's own scrolling-layout
   column/window position, not arrival order
+- Scoped to its own monitor by default, or the compositor's focused monitor
+  regardless of which bar instance you're looking at (`focused_output_only`,
+  needs the 0006 host patch — see Requirements)
 - Live via `niri msg --json event-stream`, with a 30-second self-healing
   resync in case an event is ever missed
 - Real app icons resolved through Noctalia's own icon machinery (needs the
   0009 host patch), falling back to an initial-letter tile otherwise
+
+### Placement tip
+
+In the bar's **center** section, every expand/collapse re-centers the whole
+widget, so the pill grows in both directions and the workspace under your
+cursor visibly shifts. In the **left** section it anchors in place and only
+grows rightward, so the hovered chip stays under the cursor — recommended.
 
 ### Requirements
 
