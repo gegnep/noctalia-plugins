@@ -93,7 +93,7 @@ widget.
 | `focused_output_only` | bool | `false` | Show only the focused monitor's workspaces instead of this monitor's |
 | `show_empty_workspaces` | bool | `true` | Show chips for workspaces with no windows (the active workspace is always shown) |
 | `display` | select | `id` | What each chip shows: the workspace index (`id`), its name falling back to the index (`name`), its window count (`windows`), or a bare pill (`none`) |
-| `show_window_titles` | bool | `false` | Show a truncated window title next to each window tile (always off in a vertical/side bar) |
+| `window_titles` | select | `off` | Truncated window title next to tiles: `off`, `hover` (only the tile under the pointer), or `always` (forced off in a vertical/side bar) |
 | `max_windows_per_workspace` | int | `10` | Cap on expanded window tiles per workspace before collapsing the rest into a `+N` label |
 | `labels_only_when_occupied` | bool | `false` | Hide the label on empty, inactive workspace chips, leaving a bare pill |
 | `max_label_chars` | int | `1` | Truncate workspace name labels to this many characters (purely numeric labels are never truncated) |

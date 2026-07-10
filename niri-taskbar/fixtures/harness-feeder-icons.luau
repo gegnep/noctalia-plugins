@@ -67,7 +67,7 @@ windowsById = {
 }
 expanded = true
 perChipHover = false
-settingShowWindowTitles = false
+settingWindowTitles = "off"
 iconCache = {}
 calls = {}
 HARNESS_RENDERS = {}
@@ -87,7 +87,7 @@ assert(icon.props.border == nil, "icon focus-border cue should be removed entire
 
 local dot10 = findNode(tile10, "win-10-dot")
 assert(dot10 ~= nil and dot10.type == "row", "dot should be a row")
-assert(dot10.props.width == 4 and dot10.props.height == 2 and dot10.props.radius == 1, "dot geometry mismatch")
+assert(dot10.props.width == 12 and dot10.props.height == 2 and dot10.props.radius == 1, "dot geometry mismatch")
 assert(dot10.props.fill == "primary/0", "unfocused dot should be transparent")
 
 local tile12 = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-12")
@@ -106,7 +106,7 @@ assert(callsFor("org.noctalia.NoSuchApp")[1].sizePx == 36, "rendered miss should
 windowsById = {
   [11] = { id = 11, title = "Slack workspace", appId = "Slack", workspaceId = 1, isFocused = true },
 }
-settingShowWindowTitles = true
+settingWindowTitles = "always"
 iconCache = {}
 calls = {}
 HARNESS_RENDERS = {}
@@ -132,7 +132,7 @@ windowsById = {
   [13] = { id = 13, title = "Firefox", appId = "firefox", workspaceId = 1, isFocused = false },
   [14] = { id = 14, title = "Slack", appId = "Slack", workspaceId = 1, isFocused = false },
 }
-settingShowWindowTitles = false
+settingWindowTitles = "off"
 iconCache = {}
 HARNESS_RENDERS = {}
 render()
@@ -142,3 +142,34 @@ local absentSlack = findNode(findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-14
 assert(absentFirefox ~= nil and absentFirefox.type == "button", "absent binding should fallback for firefox")
 assert(absentSlack ~= nil and absentSlack.type == "button", "absent binding should fallback for Slack")
 assert(iconCache.firefox == false and iconCache.Slack == false, "absent binding should cache misses")
+
+-- ---- window_titles = "hover": title label is always MOUNTED (no tile
+-- recreation) and its visible flag tracks the hovered window ---------------
+noctalia.appIconPath = function()
+  return "/tmp/noctalia-taskbar-firefox.svg"
+end
+windowsById = {
+  [20] = { id = 20, title = "Hover me", appId = "firefox", workspaceId = 1, isFocused = false },
+}
+iconCache = {}
+settingWindowTitles = "hover"
+hoveredWindowId = nil
+HARNESS_RENDERS = {}
+render()
+local title20 = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-20-title")
+assert(title20 ~= nil, "title label must stay mounted in hover mode")
+assert(title20.props.visible == false, "unhovered tile's title must be invisible")
+
+hoveredWindowId = 20
+HARNESS_RENDERS = {}
+render()
+local title20b = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-20-title")
+assert(title20b.props.visible == true, "hovered tile's title must be visible in hover mode")
+assert(title20b.props.text == "Hover me", "hover title text mismatch")
+
+settingWindowTitles = "off"
+HARNESS_RENDERS = {}
+render()
+local title20c = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-20-title")
+assert(title20c ~= nil and title20c.props.visible == false, "off mode keeps the label mounted but invisible")
+hoveredWindowId = nil

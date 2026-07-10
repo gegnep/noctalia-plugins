@@ -41,11 +41,16 @@ entry = "taskbar.luau"
   ]
 
   [[widget.setting]]
-  key = "show_window_titles"
-  type = "bool"
-  label = "Show window titles"
-  description = "Show a truncated window title next to each window tile. Always off in a vertical (side) bar."
-  default = false
+  key = "window_titles"
+  type = "select"
+  label = "Window titles"
+  description = "Show a truncated window title next to window tiles: never, only on the hovered tile, or always. Forced off in a vertical (side) bar."
+  default = "off"
+  options = [
+    { value = "off", label = "Off" },
+    { value = "hover", label = "On hover" },
+    { value = "always", label = "Always" },
+  ]
 
   [[widget.setting]]
   key = "max_windows_per_workspace"

@@ -62,7 +62,7 @@ local fallbackTokenCounter = 0
 local settingFocusedOutputOnly = false
 local settingShowEmptyWorkspaces = true
 local settingDisplay = "id" -- "id" | "name" | "none" (mirrors the native widget)
-local settingShowWindowTitles = false
+local settingWindowTitles = "off" -- "off" | "hover" | "always"
 local settingMaxWindowsPerWorkspace = 10
 -- P2.5 native-parity settings. Defaults/min/max mirror the native
 -- workspaces/taskbar widgets exactly (see readSettings below for citations).
@@ -137,7 +137,12 @@ local function readSettings()
     settingDisplay = "id"
   end
 
-  settingShowWindowTitles = barWidget.getConfig("show_window_titles") == true
+  local windowTitles = barWidget.getConfig("window_titles")
+  if windowTitles == "hover" or windowTitles == "always" then
+    settingWindowTitles = windowTitles
+  else
+    settingWindowTitles = "off"
+  end
 
   local maxWindows = barWidget.getConfig("max_windows_per_workspace")
   if type(maxWindows) == "number" and maxWindows >= 1 then
@@ -1093,14 +1098,17 @@ end
 local function withIndicator(key, content, dotFill)
   local spacer = ui.row({
     key = key .. "-pad",
-    width = 4,
+    width = 12,
     height = 2,
     radius = 1,
     fill = "primary/0",
   })
+  -- A 12px capsule bar (not a 4px dot) so the focused/urgent/hovered cue
+  -- is pronounced under the pointer; height stays 2 so the vertical rhythm
+  -- (and the mirrored spacer above) is unchanged.
   local dot = ui.row({
     key = key .. "-dot",
-    width = 4,
+    width = 12,
     height = 2,
     radius = 1,
     fill = settingShowFocusDot and dotFill or "primary/0",
@@ -1119,22 +1127,26 @@ end
 -- indicators entirely — it is the ONE focus cue now, always mounted, fill
 -- explicit both ways (footgun #1). onClick/onHover live on the content leaf
 -- (columns/rows aren't in kFlex's onClick/onHover set) — the dot is inert.
-local function buildWindowTile(window, showTitles)
+-- titlesMode: "off" | "hover" | "always" (already vertical-adjusted by
+-- render()). "hover" shows the title only on the tile under the pointer.
+local function buildWindowTile(window, titlesMode)
   local onClick = registerWindowCallback(window)
   local iconPath = resolveWindowIcon(window.appId)
   -- Per-window hover name (registered alongside onClick above): keeps the
   -- group alive like the shared hoverWs name used to, and additionally
-  -- tracks hoveredWindowId for the grey hover dot. hoverName still marks
-  -- the CHIP only.
+  -- tracks hoveredWindowId for the hover cue + hover titles.
   local onHoverName = "hoverWin_" .. window.id
+  local showTitle = titlesMode == "always"
+    or (titlesMode == "hover" and hoveredWindowId == window.id)
   local content
 
   if iconPath == nil then
     -- No icon resolved: letter-tile fallback. variant is ALWAYS "ghost" now
-    -- (the focused cue moved to the dot below).
+    -- (the focused cue moved to the dot below). Title shows via a text swap
+    -- (no structure change, so no recreation on hover).
     content = ui.button({
       key = "win-" .. window.id .. "-fallback",
-      text = windowTileText(window, showTitles),
+      text = windowTileText(window, showTitle),
       fontSize = 11,
       variant = "ghost",
       selected = false,
@@ -1158,23 +1170,24 @@ local function buildWindowTile(window, showTitles)
       onHover = onHoverName,
     })
 
-    if showTitles then
-      content = ui.row({
-        key = "win-" .. window.id .. "-body",
-        gap = 4,
-        align = "center",
-      }, {
-        icon,
-        ui.label({
-          key = "win-" .. window.id .. "-title",
-          text = truncateTitle(window.title),
-          fontSize = 11,
-          color = "on_surface",
-        }),
-      })
-    else
-      content = icon
-    end
+    -- The title label is ALWAYS mounted and collapses via `visible`
+    -- (footgun #3 — switching icon <-> row structure on hover would
+    -- recreate the tile and read as a flash). Flex skips invisible
+    -- children entirely, so a hidden title costs no width.
+    content = ui.row({
+      key = "win-" .. window.id .. "-body",
+      gap = 4,
+      align = "center",
+    }, {
+      icon,
+      ui.label({
+        key = "win-" .. window.id .. "-title",
+        text = truncateTitle(window.title),
+        fontSize = 11,
+        color = "on_surface",
+        visible = showTitle,
+      }),
+    })
   end
 
   -- Dot precedence: focused (primary) > urgent (error) > pointer-hovered
@@ -1194,7 +1207,7 @@ end
 
 -- windowCount is the TRUE window count for the workspace (display "windows"
 -- label) — `windows` may be an emptied tile list under only_active_workspace.
-local function buildWorkspaceGroup(workspace, windows, occupied, showTitles, windowCount)
+local function buildWorkspaceGroup(workspace, windows, occupied, titlesMode, windowCount)
   -- This workspace's row is open when per-chip hover (0008 patch) has this
   -- group hovered, or — fallback mode — when the whole widget is hovered.
   local rowOpen
@@ -1272,7 +1285,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles, win
       break
     end
     shown += 1
-    table.insert(windowButtons, buildWindowTile(window, showTitles))
+    table.insert(windowButtons, buildWindowTile(window, titlesMode))
   end
   if #windows > cap then
     table.insert(windowButtons, ui.label({
@@ -1332,7 +1345,10 @@ render = function()
   local vertical = barWidget.isVertical() == true
   -- Vertical bars force titles off regardless of the setting (narrow column
   -- has no room for a title next to the initial tile).
-  local showTitles = settingShowWindowTitles and not vertical
+  local titlesMode = settingWindowTitles
+  if vertical then
+    titlesMode = "off"
+  end
 
   local groups = {}
   for _, workspace in ipairs(sortedWorkspaces(outputFilter)) do
@@ -1351,7 +1367,7 @@ render = function()
       if settingOnlyActiveWorkspace and not workspace.isActive then
         tileWindows = {}
       end
-      table.insert(groups, buildWorkspaceGroup(workspace, tileWindows, occupied, showTitles, #windows))
+      table.insert(groups, buildWorkspaceGroup(workspace, tileWindows, occupied, titlesMode, #windows))
     end
   end
 

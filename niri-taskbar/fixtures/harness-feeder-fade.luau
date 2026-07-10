@@ -112,7 +112,7 @@ settingChipRatio = 140
 
 local chipDot1 = findNode(lastTree(), "ws-chipcol-1-dot")
 assert(chipDot1 ~= nil, "chip dot slot missing")
-assert(chipDot1.props.width == 4 and chipDot1.props.height == 2 and chipDot1.props.radius == 1, "chip dot geometry mismatch")
+assert(chipDot1.props.width == 12 and chipDot1.props.height == 2 and chipDot1.props.radius == 1, "chip dot geometry mismatch")
 assert(chipDot1.props.fill == "primary/0", "chip dot slot should always be reserved-but-unlit, got " .. tostring(chipDot1.props.fill))
 
 local chipPad1 = findNode(lastTree(), "ws-chipcol-1-pad")
@@ -364,9 +364,9 @@ HARNESS_RENDERS = {}
 render()
 local dotGated = findNode(lastTree(), "win-100-dot")
 assert(dotGated.props.fill == "primary/0", "show_focus_dot=false must never light the dot even when focused, got " .. tostring(dotGated.props.fill))
-assert(dotGated.props.width == 4 and dotGated.props.height == 2 and dotGated.props.radius == 1, "dot geometry must stay stable when show_focus_dot is off")
+assert(dotGated.props.width == 12 and dotGated.props.height == 2 and dotGated.props.radius == 1, "dot geometry must stay stable when show_focus_dot is off")
 local padGated = findNode(lastTree(), "win-100-pad")
-assert(padGated.props.width == 4 and padGated.props.height == 2, "spacer geometry must stay stable when show_focus_dot is off")
+assert(padGated.props.width == 12 and padGated.props.height == 2, "spacer geometry must stay stable when show_focus_dot is off")
 settingShowFocusDot = true
 HARNESS_RENDERS = {}
 render()
