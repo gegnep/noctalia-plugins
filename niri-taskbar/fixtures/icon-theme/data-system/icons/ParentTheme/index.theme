@@ -1,8 +1,0 @@
-[Icon Theme]
-Name=ParentTheme
-Inherits=hicolor
-Directories=scalable/apps
-
-[scalable/apps]
-Size=48
-Type=Scalable

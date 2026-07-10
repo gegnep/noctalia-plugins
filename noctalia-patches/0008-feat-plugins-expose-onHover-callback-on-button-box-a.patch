@@ -1,4 +1,4 @@
-From da4e403d44b41e777f40f668078c5ec2e5006792 Mon Sep 17 00:00:00 2001
+From 469a60f130d1d96c99ee23184ab86eabf45d9fc6 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Fri, 10 Jul 2026 01:32:10 -0400
 Subject: [PATCH] feat(plugins): expose onHover callback on button, box, and
@@ -16,7 +16,7 @@ Assisted with AI tooling.
  1 file changed, 62 insertions(+), 10 deletions(-)
 
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index 48d7110..cc7feb2 100644
+index 2778ba0..7f964ca 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
 @@ -242,14 +242,15 @@ namespace ui {
@@ -177,9 +177,9 @@ index 48d7110..cc7feb2 100644
 +          }
 +        });
 +      }
-       // Button is a Flex, so shape/inset setters are inherited; expose them
-       // the same way the row/column branch does.
-       if (const double* radius = numProp(desired, "radius")) {
+       if (const std::string* onClick = strProp(desired, "onClick");
+           onClick != nullptr && *onClick != slot.callbackName) {
+         slot.callbackName = *onClick;
 -- 
 2.54.0
 

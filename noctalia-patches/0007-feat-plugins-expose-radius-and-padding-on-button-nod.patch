@@ -1,4 +1,4 @@
-From dffcafa1e9ace7a7f3ba0dc734ca617bb8103ab0 Mon Sep 17 00:00:00 2001
+From 9ee7500b315f5fd3ab6d24c49ed0ea39a80a0e5c Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Fri, 10 Jul 2026 01:18:21 -0400
 Subject: [PATCH] feat(plugins): expose radius and padding on button nodes
@@ -9,11 +9,11 @@ plugin chips can render as capsules without giving up click handling.
 
 Written with AI assistance (Claude Fable 5).
 ---
- src/ui/ui_tree_reconciler.cpp | 23 +++++++++++++++++++----
- 1 file changed, 19 insertions(+), 4 deletions(-)
+ src/ui/ui_tree_reconciler.cpp | 24 ++++++++++++++++++++----
+ 1 file changed, 20 insertions(+), 4 deletions(-)
 
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index 3041187..48d7110 100644
+index 3041187..2778ba0 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
 @@ -279,10 +279,11 @@ namespace ui {
@@ -32,12 +32,13 @@ index 3041187..48d7110 100644
        static const std::unordered_set<std::string> kGraph = {"width",   "height",    "flexGrow",   "opacity",
                                                               "visible", "values",    "values2",    "color",
                                                               "color2",  "lineWidth", "fillOpacity"};
-@@ -867,6 +868,20 @@ namespace ui {
-       if (const bool* selected = boolProp(desired, "selected")) {
-         button->setSelected(*selected);
+@@ -894,6 +895,21 @@ namespace ui {
+         button->setMinHeight(0.0f);
+         button->setPadding(Style::spaceXs * m_scale);
        }
 +      // Button is a Flex, so shape/inset setters are inherited; expose them
-+      // the same way the row/column branch does.
++      // the same way the row/column branch does. Applied after the compact
++      // block so explicit props always win over host chrome defaults.
 +      if (const double* radius = numProp(desired, "radius")) {
 +        button->setRadius(scaled(*radius));
 +      }
@@ -50,9 +51,9 @@ index 3041187..48d7110 100644
 +            paddingV != nullptr ? scaled(*paddingV) : fallback, paddingH != nullptr ? scaled(*paddingH) : fallback
 +        );
 +      }
-       if (const std::string* onClick = strProp(desired, "onClick");
-           onClick != nullptr && *onClick != slot.callbackName) {
-         slot.callbackName = *onClick;
+       if (width != nullptr) {
+         button->setMinWidth(scaled(*width));
+         button->setMaxWidth(scaled(*width));
 -- 
 2.54.0
 

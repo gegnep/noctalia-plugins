@@ -9,9 +9,6 @@ HARNESS_ASYNC = {}
 HARNESS_RENDERS = {}
 HARNESS_NOTIFICATIONS = {}
 HARNESS_INTERVAL_MS = nil
-HARNESS_FILES = {}
-HARNESS_DIRS = {}
-HARNESS_ENV = {}
 
 -- Minimal JSON decoder (objects, arrays, strings, numbers, true/false/null).
 -- Covers exactly the shapes in the fixture dumps; null object fields decode as
@@ -214,19 +211,7 @@ noctalia = {
     if path == "/proc/sys/kernel/random/uuid" then
       return "12345678-1234-1234-1234-123456789abc\n"
     end
-    if HARNESS_FILES[path] ~= nil then
-      return HARNESS_FILES[path]
-    end
     return nil, "harness: no filesystem"
-  end,
-  fileExists = function(path)
-    return HARNESS_FILES[path] ~= nil
-  end,
-  listDir = function(path)
-    return HARNESS_DIRS[path]
-  end,
-  getenv = function(name)
-    return HARNESS_ENV[name]
   end,
   setUpdateInterval = function(ms)
     HARNESS_INTERVAL_MS = ms

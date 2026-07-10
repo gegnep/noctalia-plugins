@@ -89,10 +89,3 @@ entry = "taskbar.luau"
   min = 12
   max = 32
   step = 1
-
-  [[widget.setting]]
-  key = "icon_theme_override"
-  type = "string"
-  label = "Icon theme override"
-  description = "Icon theme name to use instead of the desktop interface setting. Leave blank for automatic."
-  default = ""
