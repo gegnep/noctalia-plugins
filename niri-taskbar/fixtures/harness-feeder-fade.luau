@@ -92,13 +92,21 @@ assert(chip1Line.props.width == 64, "ratio 400 idle width mismatch, got " .. tos
 assert(chip1Line.props.height == 4, "ratio 400 idle height mismatch, got " .. tostring(chip1Line.props.height))
 assert(chip1Line.props.text == " ", "label should be suppressed when the idle chip is too flat, got " .. tostring(chip1Line.props.text))
 
--- display "windows": label is the workspace's TRUE window count.
+-- display "windows": label is the workspace's TRUE window count. The count
+-- (2) deliberately differs from the idx (1) so an idx fallback fails loudly
+-- (a count==idx fixture masked exactly that bug once). Also exercise the
+-- readSettings path itself — "windows" must survive validation.
 settingChipRatio = 100
-settingDisplay = "windows"
+windowsById[101] = { id = 101, title = "Two", appId = "kitty", workspaceId = 1, isFocused = false }
+HARNESS_CONFIG = { display = "windows" }
+readSettings()
+assert(settingDisplay == "windows", "readSettings must accept display=windows, got " .. tostring(settingDisplay))
 HARNESS_RENDERS = {}
 render()
 local chip1Count = findNode(lastTree(), "ws-1")
-assert(chip1Count.props.text == "1", "display=windows should label the chip with its window count, got " .. tostring(chip1Count.props.text))
+assert(chip1Count.props.text == "2", "display=windows should label the chip with its window count, got " .. tostring(chip1Count.props.text))
+windowsById[101] = nil
+HARNESS_CONFIG = {}
 settingDisplay = "id"
 settingChipRatio = 140
 

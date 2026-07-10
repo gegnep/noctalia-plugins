@@ -128,7 +128,7 @@ local function readSettings()
   settingShowEmptyWorkspaces = showEmpty ~= false
 
   local display = barWidget.getConfig("display")
-  if display == "name" or display == "none" then
+  if display == "name" or display == "none" or display == "windows" then
     settingDisplay = display
   else
     settingDisplay = "id"
