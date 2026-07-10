@@ -1,4 +1,4 @@
-# noctalia patches — plugin UI props for claude-launcher
+# noctalia patches — plugin host additions for this monorepo's plugins
 
 Three additive patches to noctalia (developed on `main` @ `099312d`, branch
 `plugin-ui-props` in the local clone; verified to apply in sequence to the
@@ -12,6 +12,7 @@ native noctalia surfaces are unaffected.
 | 0003 markdown node type | Registers the existing md4c `MarkdownView` control as `ui.markdown` with a `text` prop; source cached per slot so streaming re-renders only re-parse on change. Links render underlined but are not clickable (no click API in the control). |
 | 0004 stream slot reaping | Bugfix: `runStream` slots (cap 4 per host) were only released on host teardown — a plugin running short-lived streaming commands hit the cap after four runs and every later `runStream` returned false. Exited processes now mark their cancel token and the next `startStream` sweeps them. |
 | 0005 MarkdownView measure fix | Bugfix: the control only applied its wrap width to labels in `doLayout`, so measure reported single-line sizes and parent flexes under-allocated its height — sibling rows overlapped it (visible as garbled stacked text). Wrap width now also applied from measure constraints. |
+| 0006 barWidget.outputName | Binds the per-instance output connector name (already carried in every ScriptSnapshot) so a bar widget can scope its content to the monitor it is placed on; nil when unknown. Needed by niri-taskbar's own-output workspace filtering. NOT part of PR #3327 (candidate follow-up); developed on `cachix` @ `3137323`. |
 
 Upstream status: **submitted —
 [noctalia-dev/noctalia#3327](https://github.com/noctalia-dev/noctalia/pull/3327)**,
