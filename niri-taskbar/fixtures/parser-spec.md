@@ -98,6 +98,17 @@ is kept; `tile_size`, `window_size`, `tile_pos_in_workspace_view`,
 `window_offset_in_tile` are ignored. Bump generation + render only if at
 least one position actually changed.
 
+### WorkspaceUrgencyChanged / WindowUrgencyChanged — incremental (UNVERIFIED)
+```json
+{"WorkspaceUrgencyChanged":{"id":11,"urgent":true}}
+{"WindowUrgencyChanged":{"id":86,"urgent":true}}
+```
+Shape from niri's IPC documentation, NOT yet observed in the captured
+dumps (nothing went urgent during capture — re-dump with an urgent client
+when convenient and update this section). Parsed defensively: unknown ids
+skip, absent `urgent` reads false, and the 30s snapshot resync self-heals
+any drift (workspaces/windows snapshots carry `is_urgent`).
+
 ## Events ignored (observed in dump, skip silently)
 
 `WindowFocusTimestampChanged`, `WorkspaceActiveWindowChanged`,

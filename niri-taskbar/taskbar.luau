@@ -44,6 +44,9 @@ local RESYNC_MS = 30000 -- was resyncTicks < 120 at the 250ms interval
 -- widget-level onHover fallback above keeps working unchanged.
 local perChipHover = false
 local expandedWsId = nil
+-- Window tile currently under the pointer (per-window hoverWin callbacks,
+-- 0008 patch) — drives the grey hover dot. nil when no tile is hovered.
+local hoveredWindowId = nil
 
 local workspacesById = {}
 local windowsById = {}
@@ -567,6 +570,30 @@ local function registerWindowCallback(window)
     graceMs = 0
     noctalia.runAsync("niri msg action focus-window --id " .. tostring(window.id))
   end
+
+  -- Per-window hover: does the same group-keep-alive work the chip's
+  -- hoverWs callback does (tiles used to share that name), PLUS tracks
+  -- which tile the pointer is on so its dot can grey-light.
+  local wsId = window.workspaceId
+  env["hoverWin_" .. window.id] = function(state)
+    perChipHover = true
+    if state == "true" then
+      hoveredWindowId = window.id
+      if wsId ~= nil then
+        expandedWsId = wsId
+      end
+      collapsePending = false
+      graceMs = 0
+      render()
+    else
+      if hoveredWindowId == window.id then
+        hoveredWindowId = nil
+      end
+      collapsePending = true
+      graceMs = 0
+      render()
+    end
+  end
   return winName
 end
 
@@ -582,7 +609,11 @@ pruneCallbackEnv = function()
   for id, name in pairs(registeredWindowCallbacks) do
     if windowsById[id] == nil then
       env[name] = nil
+      env["hoverWin_" .. id] = nil
       registeredWindowCallbacks[id] = nil
+      if hoveredWindowId == id then
+        hoveredWindowId = nil
+      end
     end
   end
 
@@ -669,9 +700,36 @@ handleLine = function(line)
     local name = registeredWindowCallbacks[id]
     if name ~= nil then
       env[name] = nil
+      env["hoverWin_" .. id] = nil
       registeredWindowCallbacks[id] = nil
     end
+    if hoveredWindowId == id then
+      hoveredWindowId = nil
+    end
     bumpAndRender()
+    return
+  end
+
+  -- Workspace/window urgency toggles. Shape {id, urgent} from niri's IPC
+  -- docs — NOT yet observed in the captured dumps (nothing went urgent
+  -- during capture; re-dump with an urgent client when convenient) —
+  -- parsed defensively: unknown ids skip, absent booleans read false, and
+  -- the 30s resync self-heals any drift either way.
+  if type(event.WorkspaceUrgencyChanged) == "table" then
+    local ws = workspacesById[event.WorkspaceUrgencyChanged.id]
+    if ws ~= nil then
+      ws.isUrgent = event.WorkspaceUrgencyChanged.urgent == true
+      bumpAndRender()
+    end
+    return
+  end
+
+  if type(event.WindowUrgencyChanged) == "table" then
+    local win = windowsById[event.WindowUrgencyChanged.id]
+    if win ~= nil then
+      win.isUrgent = event.WindowUrgencyChanged.urgent == true
+      bumpAndRender()
+    end
     return
   end
 
@@ -1061,9 +1119,14 @@ end
 -- indicators entirely — it is the ONE focus cue now, always mounted, fill
 -- explicit both ways (footgun #1). onClick/onHover live on the content leaf
 -- (columns/rows aren't in kFlex's onClick/onHover set) — the dot is inert.
-local function buildWindowTile(window, showTitles, hoverName)
+local function buildWindowTile(window, showTitles)
   local onClick = registerWindowCallback(window)
   local iconPath = resolveWindowIcon(window.appId)
+  -- Per-window hover name (registered alongside onClick above): keeps the
+  -- group alive like the shared hoverWs name used to, and additionally
+  -- tracks hoveredWindowId for the grey hover dot. hoverName still marks
+  -- the CHIP only.
+  local onHoverName = "hoverWin_" .. window.id
   local content
 
   if iconPath == nil then
@@ -1080,7 +1143,7 @@ local function buildWindowTile(window, showTitles, hoverName)
       paddingH = 5,
       paddingV = 2,
       onClick = onClick,
-      onHover = hoverName,
+      onHover = onHoverName,
     })
   else
     local iconSize = settingIconSize
@@ -1092,7 +1155,7 @@ local function buildWindowTile(window, showTitles, hoverName)
       radius = 4,
       fit = "contain",
       onClick = onClick,
-      onHover = hoverName,
+      onHover = onHoverName,
     })
 
     if showTitles then
@@ -1114,12 +1177,17 @@ local function buildWindowTile(window, showTitles, hoverName)
     end
   end
 
-  -- Focused wins over urgent (a focused window is being dealt with).
+  -- Dot precedence: focused (primary) > urgent (error) > pointer-hovered
+  -- (greyed on_surface_variant) > inert. A focused window is being dealt
+  -- with, so focus wins; the hover cue only needs to show on tiles that
+  -- aren't already lit.
   local dotFill = "primary/0"
   if window.isFocused == true then
     dotFill = "primary"
   elseif window.isUrgent == true then
     dotFill = "error"
+  elseif hoveredWindowId == window.id then
+    dotFill = "on_surface_variant/0.6"
   end
   return withIndicator("win-" .. window.id, content, dotFill)
 end
@@ -1204,7 +1272,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles, win
       break
     end
     shown += 1
-    table.insert(windowButtons, buildWindowTile(window, showTitles, hoverName))
+    table.insert(windowButtons, buildWindowTile(window, showTitles))
   end
   if #windows > cap then
     table.insert(windowButtons, ui.label({

@@ -445,3 +445,34 @@ assert(dotSuppressed.props.fill == "primary/0", "show_focus_dot=false must suppr
 assert(dotSuppressed.props.height == 2, "dot geometry must not change with show_focus_dot")
 settingShowFocusDot = true
 windowsById[100].isUrgent = false
+
+-- ---- urgency events (docs-derived shape) + grey hover dot ---------------
+workspacesById[1].isUrgent = false
+handleLine('{"WorkspaceUrgencyChanged":{"id":1,"urgent":true}}')
+assert(workspacesById[1].isUrgent == true, "WorkspaceUrgencyChanged should set isUrgent")
+handleLine('{"WorkspaceUrgencyChanged":{"id":1,"urgent":false}}')
+assert(workspacesById[1].isUrgent == false, "WorkspaceUrgencyChanged should clear isUrgent")
+handleLine('{"WorkspaceUrgencyChanged":{"id":999,"urgent":true}}') -- unknown id: no error
+
+windowsById[100].isUrgent = false
+handleLine('{"WindowUrgencyChanged":{"id":100,"urgent":true}}')
+assert(windowsById[100].isUrgent == true, "WindowUrgencyChanged should set isUrgent")
+handleLine('{"WindowUrgencyChanged":{"id":100,"urgent":false}}')
+assert(windowsById[100].isUrgent == false, "WindowUrgencyChanged should clear isUrgent")
+
+-- Grey hover dot: hoverWin lights the hovered tile's dot unless focus or
+-- urgency already claims it; leaving clears it.
+windowsById[100].isFocused = false
+assert(type(env.hoverWin_100) == "function", "hoverWin callback missing")
+env.hoverWin_100("true")
+assert(hoveredWindowId == 100, "hoverWin true should track the hovered window")
+local dotHover = findNode(lastTree(), "win-100-dot")
+assert(dotHover.props.fill == "on_surface_variant/0.6", "hovered unfocused tile should show the grey dot, got " .. tostring(dotHover.props.fill))
+windowsById[100].isFocused = true
+HARNESS_RENDERS = {}
+render()
+local dotHoverFocused = findNode(lastTree(), "win-100-dot")
+assert(dotHoverFocused.props.fill == "primary", "focus wins over hover for the dot")
+env.hoverWin_100("false")
+assert(hoveredWindowId == nil, "hoverWin false should clear the hovered window")
+collapsePending = false
