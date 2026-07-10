@@ -1,0 +1,1 @@
+niri unstable 2026-07-08 (commit 0777769e719b7c9b7c980d4ea66288bfbb4da5b3)

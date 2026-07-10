@@ -1,0 +1,596 @@
+[
+ {
+  "id": 7,
+  "title": "Window 28",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 12,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    1,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 206787,
+   "nanos": 178021230
+  }
+ },
+ {
+  "id": 29,
+  "title": "Window 29",
+  "app_id": "com.mitchellh.ghostty",
+  "pid": 39712,
+  "workspace_id": 10,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    4,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 95308,
+   "nanos": 436974951
+  }
+ },
+ {
+  "id": 19,
+  "title": "Window 30",
+  "app_id": "com.chatterino.",
+  "pid": 5272,
+  "workspace_id": 2,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    3,
+    1
+   ],
+   "tile_size": [
+    629.0,
+    1036.0
+   ],
+   "window_size": [
+    621,
+    1028
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 302941,
+   "nanos": 853375942
+  }
+ },
+ {
+  "id": 4,
+  "title": "Window 31",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 2,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    2,
+    1
+   ],
+   "tile_size": [
+    1266.0,
+    1036.0
+   ],
+   "window_size": [
+    1258,
+    1028
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 303107,
+   "nanos": 469792054
+  }
+ },
+ {
+  "id": 21,
+  "title": "Window 32",
+  "app_id": "com.mitchellh.ghostty",
+  "pid": 39712,
+  "workspace_id": 12,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    2,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 301413,
+   "nanos": 271325373
+  }
+ },
+ {
+  "id": 3,
+  "title": "Window 33",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 8,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    1,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 206013,
+   "nanos": 297772340
+  }
+ },
+ {
+  "id": 86,
+  "title": "Window 34",
+  "app_id": "com.mitchellh.ghostty",
+  "pid": 39712,
+  "workspace_id": 1,
+  "is_focused": true,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    4,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 303461,
+   "nanos": 243314033
+  }
+ },
+ {
+  "id": 16,
+  "title": "Window 35",
+  "app_id": "slack",
+  "pid": 4397,
+  "workspace_id": 10,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    1,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 205957,
+   "nanos": 188415699
+  }
+ },
+ {
+  "id": 93,
+  "title": "Window 36",
+  "app_id": "org.gnome.Nautilus",
+  "pid": 1341156,
+  "workspace_id": 1,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    5,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 301589,
+   "nanos": 395532908
+  }
+ },
+ {
+  "id": 25,
+  "title": "Window 37",
+  "app_id": "steam",
+  "pid": 2353,
+  "workspace_id": 11,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    1,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 298046,
+   "nanos": 896868071
+  }
+ },
+ {
+  "id": 139,
+  "title": "Window 38",
+  "app_id": "dev.noctalia.Noctalia",
+  "pid": 2665222,
+  "workspace_id": 1,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    2,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 303352,
+   "nanos": 267463051
+  }
+ },
+ {
+  "id": 2,
+  "title": "Window 39",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 6,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    1,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 301946,
+   "nanos": 579596579
+  }
+ },
+ {
+  "id": 18,
+  "title": "Window 40",
+  "app_id": "discord",
+  "pid": 4713,
+  "workspace_id": 2,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    1,
+    1
+   ],
+   "tile_size": [
+    1266.0,
+    1036.0
+   ],
+   "window_size": [
+    1258,
+    1028
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 302940,
+   "nanos": 851359972
+  }
+ },
+ {
+  "id": 8,
+  "title": "Window 41",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 8,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    2,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 205947,
+   "nanos": 441076536
+  }
+ },
+ {
+  "id": 6,
+  "title": "Window 42",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 10,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    2,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 196040,
+   "nanos": 786627720
+  }
+ },
+ {
+  "id": 5,
+  "title": "Window 43",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 1,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    1,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 301590,
+   "nanos": 735452634
+  }
+ },
+ {
+  "id": 22,
+  "title": "Window 44",
+  "app_id": "com.mitchellh.ghostty",
+  "pid": 39712,
+  "workspace_id": 1,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    3,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 303454,
+   "nanos": 97577846
+  }
+ },
+ {
+  "id": 51,
+  "title": "Window 45",
+  "app_id": "firefox",
+  "pid": 2179,
+  "workspace_id": 10,
+  "is_focused": false,
+  "is_floating": false,
+  "is_urgent": false,
+  "layout": {
+   "pos_in_scrolling_layout": [
+    3,
+    1
+   ],
+   "tile_size": [
+    1268.0,
+    1396.0
+   ],
+   "window_size": [
+    1260,
+    1388
+   ],
+   "tile_pos_in_workspace_view": null,
+   "window_offset_in_tile": [
+    4.0,
+    4.0
+   ]
+  },
+  "focus_timestamp": {
+   "secs": 95309,
+   "nanos": 690936688
+  }
+ }
+]
