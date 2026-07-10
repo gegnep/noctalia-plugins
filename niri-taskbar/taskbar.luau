@@ -21,6 +21,13 @@ local COLLAPSE_GRACE_TICKS = 5 -- ~1.25s at the 250ms update interval
 local collapsePending = false
 local collapseTicks = 0
 
+-- Per-chip hover (0008 host patch): latched true by the first per-node
+-- hover event, which switches the widget from expand-all to per-workspace
+-- expansion (the v4 behavior). Unpatched hosts never fire it, so the
+-- widget-level onHover fallback above keeps working unchanged.
+local perChipHover = false
+local expandedWsId = nil
+
 local workspacesById = {}
 local windowsById = {}
 local stateGeneration = 0
@@ -320,6 +327,24 @@ end
 local function registerWorkspaceCallback(workspace)
   local wsName = "focusWs_" .. workspace.id
   registeredWorkspaceCallbacks[workspace.id] = wsName
+
+  -- Per-chip hover (0008 host patch): chip AND its window tiles share one
+  -- callback name, so mousing from chip to tile keeps the group alive. The
+  -- arg arrives as the string "true"/"false" (toggle onChange convention).
+  -- First event latches perChipHover — on an unpatched host the prop is
+  -- ignored and the widget-level expand-all fallback keeps working.
+  env["hoverWs_" .. workspace.id] = function(state)
+    perChipHover = true
+    if state == "true" then
+      expandedWsId = workspace.id
+      collapsePending = false
+      render()
+    else
+      collapsePending = true
+      collapseTicks = 0
+    end
+  end
+
   env[wsName] = function()
     collapseTicks = 0 -- click proves the pointer is inside the widget
 
@@ -356,6 +381,7 @@ pruneCallbackEnv = function()
   for id, name in pairs(registeredWorkspaceCallbacks) do
     if workspacesById[id] == nil then
       env[name] = nil
+      env["hoverWs_" .. id] = nil
       registeredWorkspaceCallbacks[id] = nil
     end
   end
@@ -537,6 +563,18 @@ end
 -- explicit boolean per reconciler footgun #3 (visible must always be set,
 -- never conditionally omitted).
 function onHover(state)
+  if perChipHover then
+    -- Per-chip mode: the widget-level signal only smooths gap-crossings
+    -- (enter cancels the pending collapse without changing which group is
+    -- open) and starts the countdown when the pointer truly leaves.
+    if state then
+      collapsePending = false
+    else
+      collapsePending = true
+      collapseTicks = 0
+    end
+    return
+  end
   if state then
     collapsePending = false
     if not expanded then
@@ -556,7 +594,11 @@ function update()
     collapseTicks = collapseTicks + 1
     if collapseTicks >= COLLAPSE_GRACE_TICKS then
       collapsePending = false
-      expanded = false
+      if perChipHover then
+        expandedWsId = nil
+      else
+        expanded = false
+      end
       render()
     end
   end
@@ -697,10 +739,21 @@ local function windowTileText(window, showTitles)
 end
 
 local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
+  -- This workspace's row is open when per-chip hover (0008 patch) has this
+  -- group hovered, or — fallback mode — when the whole widget is hovered.
+  local rowOpen
+  if perChipHover then
+    rowOpen = expandedWsId == workspace.id
+  else
+    rowOpen = expanded
+  end
+
   -- Chip: variant/selected/onClick always explicitly set (footgun #1 —
   -- absent props never clear on a retained node).
-  -- radius/paddingH need the 0007 host patch; an unpatched reconciler logs
-  -- "has no prop, ignored" and renders the default square-ish button.
+  -- radius/paddingH need the 0007 host patch, onHover the 0008 patch; an
+  -- unpatched reconciler logs "has no prop, ignored" and degrades to the
+  -- square look / widget-level expand-all.
+  local hoverName = "hoverWs_" .. workspace.id
   local chip = ui.button({
     key = "ws-" .. workspace.id,
     text = chipText(workspace, occupied),
@@ -711,6 +764,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     paddingH = chipPaddingH(workspace),
     paddingV = 2,
     onClick = registerWorkspaceCallback(workspace),
+    onHover = hoverName,
   })
 
   -- Windows row: always mounted (even with zero children for an empty
@@ -743,6 +797,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
       paddingH = 5,
       paddingV = 2,
       onClick = registerWindowCallback(window),
+      onHover = hoverName,
     }))
   end
   if #windows > cap then
@@ -755,7 +810,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   end
   local windowsRow = ui.row({
     key = "wins-" .. workspace.id,
-    visible = expanded,
+    visible = rowOpen,
     gap = 4,
   }, windowButtons)
 
@@ -766,7 +821,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- collapsed or empty group gets a fully transparent fill of the same
   -- role so the prop is always present, never omitted.
   local capsuleFill = "surface_variant/0"
-  if expanded and occupied then
+  if rowOpen and occupied then
     capsuleFill = "surface_variant/0.15"
   end
 
