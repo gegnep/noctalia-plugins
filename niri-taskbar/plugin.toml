@@ -79,3 +79,20 @@ entry = "taskbar.luau"
   label = "Only active workspace windows"
   description = "Show window tiles only for each monitor's active workspace. Other workspace chips still render."
   default = false
+
+  [[widget.setting]]
+  key = "icon_size"
+  type = "int"
+  label = "Icon size"
+  description = "Window app icon size in pixels."
+  default = 16
+  min = 12
+  max = 32
+  step = 1
+
+  [[widget.setting]]
+  key = "icon_theme_override"
+  type = "string"
+  label = "Icon theme override"
+  description = "Icon theme name to use instead of the desktop interface setting. Leave blank for automatic."
+  default = ""

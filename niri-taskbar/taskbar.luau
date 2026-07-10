@@ -49,6 +49,20 @@ local settingMaxWindowsPerWorkspace = 10
 local settingLabelsOnlyWhenOccupied = false
 local settingMaxLabelChars = 1
 local settingOnlyActiveWorkspace = false
+local settingIconSize = 16
+local settingIconThemeOverride = ""
+
+-- P3 icon resolver state. The desktop-file index is intentionally lazy:
+-- widget creation and the initial empty render do not walk application dirs.
+local iconScanRoots = nil
+local desktopIndexBuilt = false
+local desktopScanStats = { files = 0, ms = nil } -- no timing here; structure is easy to time live.
+local desktopFileIcons = {}
+local desktopFileIconsLower = {}
+local startupWmClassIcons = {}
+local iconCache = {}
+local gsettingsIconTheme = nil
+local gsettingsProbeStarted = false
 
 -- The monitor this widget instance sits on. Needs the 0006 host patch
 -- (barWidget.outputName binding); on an unpatched host the accessor is
@@ -129,6 +143,20 @@ local function readSettings()
 
   -- native default false (widget_settings_registry.cpp:868, "taskbar").
   settingOnlyActiveWorkspace = barWidget.getConfig("only_active_workspace") == true
+
+  local iconSize = barWidget.getConfig("icon_size")
+  if type(iconSize) == "number" and iconSize >= 12 and iconSize <= 32 then
+    settingIconSize = math.floor(iconSize)
+  else
+    settingIconSize = 16
+  end
+
+  local themeOverride = barWidget.getConfig("icon_theme_override")
+  if type(themeOverride) == "string" then
+    settingIconThemeOverride = trim(themeOverride)
+  else
+    settingIconThemeOverride = ""
+  end
 end
 
 local function shellQuote(value)
@@ -140,6 +168,416 @@ local function commandStdout(result)
     return tostring(result.stdout or "")
   end
   return tostring(result or "")
+end
+
+local function pushUnique(values, value)
+  if type(value) ~= "string" or value == "" then
+    return
+  end
+  for _, existing in ipairs(values) do
+    if existing == value then
+      return
+    end
+  end
+  table.insert(values, value)
+end
+
+local function splitList(value, separator)
+  local out = {}
+  for part in string.gmatch(tostring(value or "") .. separator, "([^" .. separator .. "]*)" .. separator) do
+    local item = trim(part)
+    if item ~= "" then
+      table.insert(out, item)
+    end
+  end
+  return out
+end
+
+local function getenv(name)
+  if type(noctalia.getenv) == "function" then
+    local value = noctalia.getenv(name)
+    if type(value) == "string" and value ~= "" then
+      return value
+    end
+  end
+  return nil
+end
+
+local function homeDir()
+  return getenv("HOME") or "~"
+end
+
+local function xdgDataDirs()
+  local dirs = {}
+  pushUnique(dirs, getenv("XDG_DATA_HOME") or (homeDir() .. "/.local/share"))
+
+  local dataDirs = getenv("XDG_DATA_DIRS")
+  if dataDirs == nil then
+    pushUnique(dirs, "/usr/local/share")
+    pushUnique(dirs, "/usr/share")
+  else
+    for _, dir in ipairs(splitList(dataDirs, ":")) do
+      pushUnique(dirs, dir)
+    end
+  end
+
+  return dirs
+end
+
+local function defaultIconScanRoots()
+  return xdgDataDirs()
+end
+
+local function readDesktopEntry(path)
+  local contents = noctalia.readFile(path)
+  if type(contents) ~= "string" then
+    return nil, nil
+  end
+
+  local inDesktopEntry = false
+  local iconName = nil
+  local wmClass = nil
+  for rawLine in string.gmatch(contents .. "\n", "([^\n]*)\n") do
+    local line = trim(rawLine)
+    if string.sub(line, 1, 1) == "[" then
+      if inDesktopEntry and line ~= "[Desktop Entry]" then
+        break
+      end
+      inDesktopEntry = line == "[Desktop Entry]"
+    elseif inDesktopEntry then
+      local eq = string.find(line, "=", 1, true)
+      if eq ~= nil then
+        local key = string.sub(line, 1, eq - 1)
+        local value = trim(string.sub(line, eq + 1))
+        if key == "Icon" then
+          iconName = value
+        elseif key == "StartupWMClass" then
+          wmClass = value
+        end
+      end
+    end
+  end
+
+  return iconName, wmClass
+end
+
+local function indexDesktopFile(fileId, path)
+  local iconName, wmClass = readDesktopEntry(path)
+  desktopScanStats.files = desktopScanStats.files + 1
+  if type(iconName) ~= "string" or iconName == "" then
+    return
+  end
+
+  desktopFileIcons[fileId] = iconName
+  desktopFileIconsLower[string.lower(fileId)] = iconName
+  if type(wmClass) == "string" and wmClass ~= "" then
+    startupWmClassIcons[wmClass] = iconName
+  end
+end
+
+local function scanDesktopDir(root, vendorPrefix)
+  local applications = root .. "/applications"
+  local entries = noctalia.listDir(applications)
+  if type(entries) ~= "table" then
+    return
+  end
+
+  for _, name in ipairs(entries) do
+    if type(name) == "string" then
+      local path = applications .. "/" .. name
+      if string.sub(name, -8) == ".desktop" then
+        local fileId = string.sub(name, 1, -9)
+        if vendorPrefix ~= nil and vendorPrefix ~= "" then
+          fileId = vendorPrefix .. "-" .. fileId
+        end
+        indexDesktopFile(fileId, path)
+      elseif vendorPrefix == nil then
+        local vendorEntries = noctalia.listDir(path)
+        if type(vendorEntries) == "table" then
+          for _, vendorName in ipairs(vendorEntries) do
+            if type(vendorName) == "string" and string.sub(vendorName, -8) == ".desktop" then
+              indexDesktopFile(name .. "-" .. string.sub(vendorName, 1, -9), path .. "/" .. vendorName)
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+local function ensureDesktopIndex()
+  if desktopIndexBuilt then
+    return
+  end
+  desktopIndexBuilt = true
+  desktopScanStats.files = 0
+  desktopFileIcons = {}
+  desktopFileIconsLower = {}
+  startupWmClassIcons = {}
+
+  local roots = iconScanRoots
+  if type(roots) ~= "table" then
+    roots = defaultIconScanRoots()
+  end
+  for _, root in ipairs(roots) do
+    if type(root) == "string" and root ~= "" then
+      scanDesktopDir(root)
+    end
+  end
+end
+
+local function lastDotSegment(value)
+  local segment = tostring(value or "")
+  for part in string.gmatch(segment, "[^%.]+") do
+    segment = part
+  end
+  return segment
+end
+
+local function iconNameForAppId(appId)
+  local id = tostring(appId or "")
+  if id == "" then
+    return nil
+  end
+  ensureDesktopIndex()
+
+  local iconName = desktopFileIcons[id]
+  if iconName ~= nil then
+    return iconName
+  end
+
+  iconName = desktopFileIconsLower[string.lower(id)]
+  if iconName ~= nil then
+    return iconName
+  end
+
+  iconName = startupWmClassIcons[id]
+  if iconName ~= nil then
+    return iconName
+  end
+
+  if string.find(id, ".", 1, true) ~= nil then
+    local segment = lastDotSegment(id)
+    iconName = desktopFileIcons[segment]
+    if iconName ~= nil then
+      return iconName
+    end
+    iconName = desktopFileIcons[string.lower(segment)]
+    if iconName ~= nil then
+      return iconName
+    end
+    iconName = desktopFileIconsLower[string.lower(segment)]
+    if iconName ~= nil then
+      return iconName
+    end
+  end
+
+  return nil
+end
+
+local function iconBaseDirs()
+  local dataDirs = xdgDataDirs()
+  local out = {}
+  if #dataDirs > 0 then
+    pushUnique(out, dataDirs[1] .. "/icons")
+  end
+  for i = 2, #dataDirs do
+    pushUnique(out, dataDirs[i] .. "/icons")
+  end
+  pushUnique(out, homeDir() .. "/.icons")
+  return out
+end
+
+local function parseIconThemeInherits(themeRoot)
+  local contents = noctalia.readFile(themeRoot .. "/index.theme")
+  if type(contents) ~= "string" then
+    return {}
+  end
+
+  local inIconTheme = false
+  for rawLine in string.gmatch(contents .. "\n", "([^\n]*)\n") do
+    local line = trim(rawLine)
+    if string.sub(line, 1, 1) == "[" then
+      inIconTheme = line == "[Icon Theme]"
+    elseif inIconTheme and string.sub(line, 1, 9) == "Inherits=" then
+      return splitList(string.sub(line, 10), ",")
+    end
+  end
+  return {}
+end
+
+local function themeExists(themeName, bases)
+  for _, base in ipairs(bases) do
+    local entries = noctalia.listDir(base .. "/" .. themeName)
+    if type(entries) == "table" then
+      return true
+    end
+  end
+  return false
+end
+
+local function buildThemeChain(themeName, bases)
+  local chain = {}
+  local visited = {}
+
+  local function visit(name, depth)
+    if type(name) ~= "string" or name == "" or visited[name] or depth > 5 then
+      return
+    end
+    visited[name] = true
+    if themeExists(name, bases) then
+      table.insert(chain, name)
+      for _, base in ipairs(bases) do
+        for _, parent in ipairs(parseIconThemeInherits(base .. "/" .. name)) do
+          visit(parent, depth + 1)
+        end
+      end
+    end
+  end
+
+  visit(themeName, 1)
+  if not visited["hicolor"] then
+    visit("hicolor", 1)
+  end
+  if #chain == 0 then
+    table.insert(chain, "hicolor")
+  end
+  return chain
+end
+
+local function sizeValue(name)
+  if string.find(name, "scalable", 1, true) ~= nil then
+    return 1000000
+  end
+  local digits = string.match(name, "(%d+)")
+  return tonumber(digits) or -1
+end
+
+local function sortedSizeDirs(themeRoot)
+  local entries = noctalia.listDir(themeRoot)
+  local dirs = {}
+  if type(entries) ~= "table" then
+    return dirs
+  end
+  for _, name in ipairs(entries) do
+    if type(name) == "string" then
+      local apps = noctalia.listDir(themeRoot .. "/" .. name .. "/apps")
+      if type(apps) == "table" then
+        table.insert(dirs, name)
+      end
+    end
+  end
+  table.sort(dirs, function(a, b)
+    return sizeValue(a) > sizeValue(b)
+  end)
+  return dirs
+end
+
+local function activeIconTheme()
+  if settingIconThemeOverride ~= "" then
+    return settingIconThemeOverride
+  end
+  return gsettingsIconTheme or "hicolor"
+end
+
+local function resolveIconName(iconName)
+  if type(iconName) ~= "string" or iconName == "" then
+    return nil
+  end
+
+  if string.sub(iconName, 1, 1) == "/" then
+    if noctalia.fileExists(iconName) then
+      return iconName
+    end
+    return nil
+  end
+
+  local bases = iconBaseDirs()
+  local chain = buildThemeChain(activeIconTheme(), bases)
+  for _, theme in ipairs(chain) do
+    for _, base in ipairs(bases) do
+      local themeRoot = base .. "/" .. theme
+      for _, sizeDir in ipairs(sortedSizeDirs(themeRoot)) do
+        local prefix = themeRoot .. "/" .. sizeDir .. "/apps/" .. iconName
+        local svg = prefix .. ".svg"
+        if noctalia.fileExists(svg) then
+          return svg
+        end
+        local png = prefix .. ".png"
+        if noctalia.fileExists(png) then
+          return png
+        end
+      end
+    end
+  end
+
+  for _, ext in ipairs({ ".png", ".xpm" }) do
+    local path = "/usr/share/pixmaps/" .. iconName .. ext
+    if noctalia.fileExists(path) then
+      return path
+    end
+  end
+
+  return nil
+end
+
+local function resolveWindowIcon(appId)
+  local id = tostring(appId or "")
+  if id == "" then
+    return nil
+  end
+  local cached = iconCache[id]
+  if cached ~= nil then
+    if cached == false then
+      return nil
+    end
+    return cached
+  end
+
+  local iconName = id
+  if string.sub(iconName, 1, 1) ~= "/" then
+    iconName = iconNameForAppId(id)
+  end
+  local path = resolveIconName(iconName)
+  if path == nil then
+    iconCache[id] = false
+    return nil
+  end
+
+  iconCache[id] = path
+  return path
+end
+
+local function parseGsettingsTheme(raw)
+  local value = trim(raw)
+  if string.sub(value, 1, 1) == "'" and string.sub(value, -1) == "'" then
+    value = string.sub(value, 2, -2)
+  elseif string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
+    value = string.sub(value, 2, -2)
+  end
+  return trim(value)
+end
+
+local function startIconThemeProbe()
+  if gsettingsProbeStarted or settingIconThemeOverride ~= "" then
+    return
+  end
+  gsettingsProbeStarted = true
+  noctalia.runAsync("gsettings get org.gnome.desktop.interface icon-theme", function(result)
+    local theme = parseGsettingsTheme(commandStdout(result))
+    if settingIconThemeOverride ~= "" then
+      gsettingsProbeStarted = false
+      return
+    end
+    if theme == "" then
+      return
+    end
+    gsettingsIconTheme = theme
+    iconCache = {}
+    if render ~= nil then
+      render()
+    end
+  end, 1000)
 end
 
 local function generateStreamToken()
@@ -519,7 +957,12 @@ end
 
 -- Settings changed in the widget's config editor (noctalia.d.luau:263).
 function onConfigChanged()
+  local previousThemeOverride = settingIconThemeOverride
   readSettings()
+  if previousThemeOverride ~= settingIconThemeOverride then
+    iconCache = {}
+    startIconThemeProbe()
+  end
   render()
 end
 
@@ -738,6 +1181,74 @@ local function windowTileText(window, showTitles)
   return initial
 end
 
+local function buildWindowTile(window, showTitles, hoverName)
+  local onClick = registerWindowCallback(window)
+  local iconPath = resolveWindowIcon(window.appId)
+  if iconPath == nil then
+    -- No icon resolved: preserve the P2 button fallback exactly, including
+    -- focus variant and the shared per-workspace hover callback.
+    return ui.button({
+      key = "win-" .. window.id,
+      text = windowTileText(window, showTitles),
+      fontSize = 11,
+      variant = window.isFocused == true and "secondary" or "ghost",
+      selected = false,
+      height = 22,
+      radius = 8,
+      paddingH = 5,
+      paddingV = 2,
+      onClick = onClick,
+      onHover = hoverName,
+    })
+  end
+
+  local iconSize = settingIconSize
+  if showTitles then
+    return ui.row({
+      key = "win-" .. window.id,
+      gap = 4,
+      align = "center",
+    }, {
+      ui.image({
+        key = "win-" .. window.id .. "-icon",
+        path = iconPath,
+        width = iconSize,
+        height = iconSize,
+        radius = 4,
+        fit = "contain",
+        -- Focused-window cue for icon tiles: images have no variant, so a
+        -- secondary border carries the cue (transparent when unfocused —
+        -- explicit both ways per footgun #1).
+        border = window.isFocused == true and "secondary" or "secondary/0",
+        borderWidth = 1,
+        onClick = onClick,
+        onHover = hoverName,
+      }),
+      ui.label({
+        key = "win-" .. window.id .. "-title",
+        text = truncateTitle(window.title),
+        fontSize = 11,
+        color = "on_surface",
+      }),
+    })
+  end
+
+  return ui.image({
+    key = "win-" .. window.id,
+    path = iconPath,
+    width = iconSize,
+    height = iconSize,
+    radius = 4,
+    fit = "contain",
+    -- Focused-window cue (images have no variant): secondary border,
+    -- transparent when unfocused — explicit both ways per footgun #1.
+    border = window.isFocused == true and "secondary" or "secondary/0",
+    borderWidth = 1,
+    onClick = onClick,
+    onHover = hoverName,
+  })
+end
+
 local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- This workspace's row is open when per-chip hover (0008 patch) has this
   -- group hovered, or — fallback mode — when the whole widget is hovered.
@@ -760,7 +1271,10 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     fontSize = 11,
     variant = chipVariant(workspace, occupied),
     selected = false,
-    radius = 12,
+    -- height beats Button's 32px minHeight floor (style.h controlHeightSm);
+    -- radius = height/2 makes a true capsule — a one-char chip is a circle.
+    height = 22,
+    radius = 11,
     paddingH = chipPaddingH(workspace),
     paddingV = 2,
     onClick = registerWorkspaceCallback(workspace),
@@ -778,27 +1292,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
       break
     end
     shown += 1
-    -- Focused-window cue (P2.5): "secondary" (colored fill=secondary,
-    -- label=on_secondary) rather than the plain "default" preset — a flat
-    -- surface_variant fill read too close to an unfocused/ghost tile at a
-    -- glance. "secondary" is already the palette's occupied-chip color
-    -- (chipVariant above), so reusing it here stays inside the existing
-    -- two-tier vocabulary (primary = active workspace, secondary = "has
-    -- attention") instead of introducing a third color. unfocused stays
-    -- ghost (transparent) — no ButtonVariant exposes an alpha-blended
-    -- surface_variant fill, see report.
-    table.insert(windowButtons, ui.button({
-      key = "win-" .. window.id,
-      text = windowTileText(window, showTitles),
-      fontSize = 11,
-      variant = window.isFocused == true and "secondary" or "ghost",
-      selected = false,
-      radius = 8,
-      paddingH = 5,
-      paddingV = 2,
-      onClick = registerWindowCallback(window),
-      onHover = hoverName,
-    }))
+    table.insert(windowButtons, buildWindowTile(window, showTitles, hoverName))
   end
   if #windows > cap then
     table.insert(windowButtons, ui.label({
@@ -900,5 +1394,6 @@ end
 
 noctalia.setUpdateInterval(250)
 readSettings()
+startIconThemeProbe()
 startStream()
 render()
