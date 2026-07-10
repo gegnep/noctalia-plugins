@@ -53,17 +53,26 @@ HARNESS_RENDERS = {}
 render()
 local chip1ByIdx = findNode(lastTree(), "ws-1")
 assert(chip1ByIdx ~= nil, "chip node missing")
-assert(chip1ByIdx.props.width == 22, "1-char label chip should be a 22px circle, got " .. tostring(chip1ByIdx.props.width))
+assert(chip1ByIdx.props.width == 16, "1-char label chip should be a 16px circle, got " .. tostring(chip1ByIdx.props.width))
+assert(chip1ByIdx.props.height == 16, "chip height should be 16 (matches baseGlyphSize), got " .. tostring(chip1ByIdx.props.height))
 assert(chip1ByIdx.props.paddingH == nil, "chipPaddingH geometry should be gone")
 assert(chip1ByIdx.props.contentAlign == "center", "chip should center its text now that width owns geometry")
+
+local chipDot1 = findNode(lastTree(), "ws-1-dot")
+assert(chipDot1 ~= nil, "chip dot slot missing")
+assert(chipDot1.props.width == 4 and chipDot1.props.height == 3 and chipDot1.props.radius == 2, "chip dot geometry mismatch")
+assert(chipDot1.props.fill == "primary/0", "chip dot slot should always be reserved-but-unlit, got " .. tostring(chipDot1.props.fill))
+
+local chipCol1 = findNode(lastTree(), "ws-chipcol-1")
+assert(chipCol1 ~= nil, "chip column wrapper missing")
 
 settingDisplay = "name" -- name "abc" -> 3 chars
 settingMaxLabelChars = 20 -- default is 1 (v4 parity); widen so "abc" isn't truncated to "a"
 HARNESS_RENDERS = {}
 render()
 local chip1ByName = findNode(lastTree(), "ws-1")
-assert(chip1ByName.props.width == 22 + 7 * 2, "3-char label chip width mismatch, got " .. tostring(chip1ByName.props.width))
-assert(chip1ByName.props.width > 22, "3-char label chip should be wider than the bare circle")
+assert(chip1ByName.props.width == 16 + 6 * 2, "3-char label chip width mismatch, got " .. tostring(chip1ByName.props.width))
+assert(chip1ByName.props.width > 16, "3-char label chip should be wider than the bare circle")
 settingDisplay = "id"
 settingMaxLabelChars = 1
 
@@ -127,6 +136,11 @@ local windowsRowOpen = findNode(lastTree(), "wins-1")
 assert(windowsRowOpen.props.visible == true, "fully open row should be visible")
 assert(windowsRowOpen.props.opacity == 1, "fully open row should render at opacity 1")
 
+local groupOpen = findNode(lastTree(), "ws-group-1")
+assert(groupOpen.props.fill == "surface_variant/0.30", "settled open+occupied pill fill mismatch, got " .. tostring(groupOpen.props.fill))
+assert(groupOpen.props.radius == 12, "pill radius mismatch, got " .. tostring(groupOpen.props.radius))
+assert(groupOpen.props.paddingH == 3 and groupOpen.props.paddingV == 1, "pill padding mismatch")
+
 -- ---- fixture (a): grace accumulator fires at exactly COLLAPSE_GRACE_MS,
 -- driven purely by 250ms ticks (idle -> no animation in flight) ----------
 
@@ -171,6 +185,9 @@ local windowsRowClosed = findNode(lastTree(), "wins-1")
 assert(windowsRowClosed.props.visible == false, "fully closed row should be visible=false")
 assert(windowsRowClosed.props.opacity == 0, "fully closed row should render at opacity 0")
 
+local groupClosed = findNode(lastTree(), "ws-group-1")
+assert(groupClosed.props.fill == "surface_variant/0.00", "closed pill fill should be transparent, got " .. tostring(groupClosed.props.fill))
+
 -- ---- fixture (d): reversal mid-fade never leaves [0,1], no restart pop -
 
 env.hoverWs_1("true") -- re-open: renders, target -> 1, opacity starts at 0 again
@@ -179,6 +196,13 @@ assert(rowAnim[1].target == 1 and rowAnim[1].opacity == 0)
 update() -- one 16ms step partway open
 local midOpacity = rowAnim[1].opacity
 assert(midOpacity > 0 and midOpacity < 1, "expected a partial step mid-fade, got " .. tostring(midOpacity))
+
+-- Mid-fade frame: the pill tint should track opacity continuously, not snap
+-- between the closed/settled extremes.
+local groupMid = findNode(lastTree(), "ws-group-1")
+local midFillAlpha = tonumber(string.match(groupMid.props.fill, "([%d%.]+)$"))
+assert(midFillAlpha ~= nil, "mid-fade pill fill should still be a surface_variant/N string, got " .. tostring(groupMid.props.fill))
+assert(midFillAlpha > 0 and midFillAlpha < 0.30, "mid-fade pill alpha should sit strictly between closed and settled-open, got " .. tostring(midFillAlpha))
 
 -- Simulate the grace period having already elapsed mid-fade (the real
 -- 5-tick countdown is exercised separately above) by applying exactly what

@@ -27,7 +27,7 @@ local graceMs = 0
 -- only drops to visible=false once a closing row's opacity reaches 0 exactly
 -- (see stepRowAnims). Lazily populated per workspace id by ensureRowAnim.
 local rowAnim = {}
-local FADE_TAU_MS = 50 -- exponential ease-out time constant; ~3*tau (150ms) to settle, matching the ~140ms target
+local FADE_TAU_MS = 65 -- exponential ease-out time constant; ~3*tau (~195ms) to settle — softer tail than the initial 50ms tuning
 local FADE_SNAP_EPS = 0.02
 
 -- Update interval: 250ms at rest, dropped to 16ms while any rowAnim is
@@ -871,7 +871,7 @@ local function workspaceLabel(workspace)
 end
 
 -- Chip text: display "none" keeps a single space so the capsule body has
--- content height (chipWidth then renders it as a bare 22px circle).
+-- content height (chipWidth then renders it as a bare circle at CHIP_SIZE).
 -- labels_only_when_occupied (native workspaces_widget.cpp:59-66): hide the
 -- label for a non-active, unoccupied workspace even when a display mode is
 -- selected, rendering a bare pill instead.
@@ -899,19 +899,24 @@ local function textLength(text)
   return string.len(text)
 end
 
+-- Chip diameter: 16 matches both Style::baseGlyphSize (the native
+-- workspaces pill height basis) and the default icon_size, so the chip, its
+-- symmetric dot slot, and a window tile all share one vertical rhythm.
+local CHIP_SIZE = 16
+
 -- Perfect-circle chips: a single-character label (digit, bare space for
--- display "none") gets width == height (22) for a true circle; anything
--- longer (workspace names, two-digit ids) widens into a capsule at 7px per
--- extra character. Width is ALWAYS computed and set (footgun #1) — geometry
--- no longer comes from paddingH, so there is no "unset" fallback to fall
--- back to. The active workspace uses this same formula: the primary-fill
--- variant is the whole active cue, not extra width.
+-- display "none") gets width == height (CHIP_SIZE) for a true circle;
+-- anything longer (workspace names, two-digit ids) widens into a capsule at
+-- 6px per extra character. Width is ALWAYS computed and set (footgun #1) —
+-- geometry no longer comes from paddingH, so there is no "unset" fallback to
+-- fall back to. The active workspace uses this same formula: the
+-- primary-fill variant is the whole active cue, not extra width.
 local function chipWidth(text)
   local len = textLength(text)
   if len <= 1 then
-    return 22
+    return CHIP_SIZE
   end
-  return 22 + 7 * (len - 1)
+  return CHIP_SIZE + 6 * (len - 1)
 end
 
 local function windowTileText(window, showTitles)
@@ -1035,14 +1040,34 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     selected = false,
     -- height beats Button's 32px minHeight floor (style.h controlHeightSm);
     -- radius = height/2 + contentAlign=center makes a true circle for a
-    -- 1-char label at width==height==22, capsule beyond that.
-    height = 22,
+    -- 1-char label at width==height==CHIP_SIZE, capsule beyond that.
+    -- CHIP_SIZE (16) matches Style::baseGlyphSize, the actual height basis
+    -- the bar's content slot clamps to — a hardcoded 22 rendered as an oval.
+    height = CHIP_SIZE,
     width = chipWidth(chipTextValue),
-    radius = 11,
+    radius = CHIP_SIZE / 2,
     contentAlign = "center",
     onClick = registerWorkspaceCallback(workspace),
     onHover = hoverName,
   })
+
+  -- Symmetric dot slot (footgun #1 — fill always present, never lit this
+  -- iteration): mirrors the window-tile column's [content, gap 2, dot 3]
+  -- shape so the chip and its tiles share one vertical center instead of
+  -- the chip sitting ~2.5px low against a bare 16px button.
+  local chipDot = ui.row({
+    key = "ws-" .. workspace.id .. "-dot",
+    width = 4,
+    height = 3,
+    radius = 2,
+    fill = "primary/0",
+  })
+
+  local chipColumn = ui.column({
+    key = "ws-chipcol-" .. workspace.id,
+    align = "center",
+    gap = 2,
+  }, { chip, chipDot })
 
   -- Windows row: always mounted (even with zero children for an empty
   -- workspace); `visible` and `opacity` both track the fade (footgun #3 —
@@ -1076,25 +1101,25 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   }, windowButtons)
 
   -- Group capsule (native group-by-workspace look, taskbar_widget.cpp:~640):
-  -- wrap chip+windows in one filled/rounded row so an expanded, occupied
-  -- workspace reads as a single capsule. fill is explicit BOTH ways
-  -- (footgun #1 — absent props never clear on a retained node): a
-  -- collapsed or empty group gets a fully transparent fill of the same
-  -- role so the prop is always present, never omitted. Keys off
-  -- target/occupied (not opacity) so the capsule fill doesn't pop against
-  -- the smoother row-opacity fade.
-  local capsuleFill = "surface_variant/0"
-  if anim.target == 1 and occupied then
-    capsuleFill = "surface_variant/0.15"
-  end
+  -- wrap chip+windows in one filled/rounded row so the chip reads as
+  -- GROWING INTO a pill that contains its windows, not a row appearing
+  -- next to the chip. fill is explicit BOTH ways (footgun #1 — absent
+  -- props never clear on a retained node) and tied to the row's own fade
+  -- opacity, not a two-state snap, so the pill tint grows/decays in step
+  -- with the icons it contains. An unoccupied workspace never tints, even
+  -- mid-fade — an empty expanded row has no icons to contain.
+  local tintOpacity = occupied and anim.opacity or 0
+  local capsuleFill = "surface_variant/" .. string.format("%.2f", 0.30 * tintOpacity)
 
   return ui.row({
     key = "ws-group-" .. workspace.id,
-    gap = 4,
+    gap = 3,
+    align = "center",
+    paddingH = 3,
+    paddingV = 1,
     fill = capsuleFill,
-    radius = 14,
-    padding = 2,
-  }, { chip, windowsRow })
+    radius = 12,
+  }, { chipColumn, windowsRow })
 end
 
 render = function()
