@@ -1,0 +1,52 @@
+From 9522b64d6b99ff687a651f4b429069716bd3536b Mon Sep 17 00:00:00 2001
+From: gegnep <96670443+gegnep@users.noreply.github.com>
+Date: Fri, 10 Jul 2026 01:18:21 -0400
+Subject: [PATCH] feat(plugins): expose radius and padding on button nodes
+
+Button already inherits Flex's setRadius/setPadding; allowlist the
+props and apply them the same way the row/column branch does, so
+plugin chips can render as capsules without giving up click handling.
+
+Written with AI assistance (Claude Fable 5).
+---
+ src/ui/ui_tree_reconciler.cpp | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
+index 3041187..a8d8d08 100644
+--- a/src/ui/ui_tree_reconciler.cpp
++++ b/src/ui/ui_tree_reconciler.cpp
+@@ -282,7 +282,8 @@ namespace ui {
+       static const std::unordered_set<std::string> kButton = {"width",     "height",  "flexGrow",     "opacity",
+                                                               "visible",   "text",    "glyph",        "fontSize",
+                                                               "glyphSize", "variant", "contentAlign", "enabled",
+-                                                              "selected",  "onClick", "onRightClick"};
++                                                              "selected",  "onClick", "onRightClick", "radius",
++                                                              "padding",   "paddingH", "paddingV"};
+       static const std::unordered_set<std::string> kGraph = {"width",   "height",    "flexGrow",   "opacity",
+                                                              "visible", "values",    "values2",    "color",
+                                                              "color2",  "lineWidth", "fillOpacity"};
+@@ -867,6 +868,20 @@ namespace ui {
+       if (const bool* selected = boolProp(desired, "selected")) {
+         button->setSelected(*selected);
+       }
++      // Button is a Flex, so shape/inset setters are inherited; expose them
++      // the same way the row/column branch does.
++      if (const double* radius = numProp(desired, "radius")) {
++        button->setRadius(scaled(*radius));
++      }
++      const double* padding = numProp(desired, "padding");
++      const double* paddingV = numProp(desired, "paddingV");
++      const double* paddingH = numProp(desired, "paddingH");
++      if (padding != nullptr || paddingV != nullptr || paddingH != nullptr) {
++        const float fallback = padding != nullptr ? scaled(*padding) : 0.0f;
++        button->setPadding(
++            paddingV != nullptr ? scaled(*paddingV) : fallback, paddingH != nullptr ? scaled(*paddingH) : fallback
++        );
++      }
+       if (const std::string* onClick = strProp(desired, "onClick");
+           onClick != nullptr && *onClick != slot.callbackName) {
+         slot.callbackName = *onClick;
+-- 
+2.54.0
+

@@ -566,19 +566,22 @@ local function workspaceLabel(workspace)
   return tostring(workspace.idx)
 end
 
--- Button has no paddingH prop (kButton lacks it), so the native "active pill
--- is ~2.2x wider" is approximated with literal padding spaces rather than a
--- real inset — an intentional deviation, see report. Display "none" renders
--- a bare pill: spaces give the capsule body its width.
+-- Chip width: native active pills are ~2.2x wider; with the 0007 host patch
+-- (button radius/padding props) this is a real paddingH inset. Display
+-- "none" keeps a single space so the capsule body has content height.
 local function chipText(workspace)
   local label = workspaceLabel(workspace)
   if label == nil then
-    return workspace.isActive and "      " or "  "
-  end
-  if workspace.isActive then
-    return "  " .. label .. "  "
+    return " "
   end
   return label
+end
+
+local function chipPaddingH(workspace)
+  if workspace.isActive then
+    return 14
+  end
+  return 7
 end
 
 local function windowTileText(window, showTitles)
@@ -592,12 +595,17 @@ end
 local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- Chip: variant/selected/onClick always explicitly set (footgun #1 —
   -- absent props never clear on a retained node).
+  -- radius/paddingH need the 0007 host patch; an unpatched reconciler logs
+  -- "has no prop, ignored" and renders the default square-ish button.
   local chip = ui.button({
     key = "ws-" .. workspace.id,
     text = chipText(workspace),
     fontSize = 11,
     variant = chipVariant(workspace, occupied),
     selected = false,
+    radius = 12,
+    paddingH = chipPaddingH(workspace),
+    paddingV = 2,
     onClick = registerWorkspaceCallback(workspace),
   })
 
@@ -621,6 +629,9 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
       fontSize = 11,
       variant = window.isFocused == true and "default" or "ghost",
       selected = false,
+      radius = 8,
+      paddingH = 5,
+      paddingV = 2,
       onClick = registerWindowCallback(window),
     }))
   end
@@ -658,7 +669,9 @@ render = function()
   for _, workspace in ipairs(sortedWorkspaces(outputFilter)) do
     local windows = windowsForWorkspace(workspace.id)
     local occupied = #windows > 0
-    if settingShowEmptyWorkspaces or occupied or workspace.isActive then
+    -- Urgent workspaces stay visible even when empties are hidden,
+    -- matching the native widget's empty logic (workspaces_widget.cpp:21).
+    if settingShowEmptyWorkspaces or occupied or workspace.isActive or workspace.isUrgent then
       table.insert(groups, buildWorkspaceGroup(workspace, windows, occupied, showTitles))
     end
   end
