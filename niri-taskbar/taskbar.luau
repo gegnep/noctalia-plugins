@@ -37,6 +37,11 @@ local settingShowEmptyWorkspaces = true
 local settingDisplay = "id" -- "id" | "name" | "none" (mirrors the native widget)
 local settingShowWindowTitles = false
 local settingMaxWindowsPerWorkspace = 10
+-- P2.5 native-parity settings. Defaults/min/max mirror the native
+-- workspaces/taskbar widgets exactly (see readSettings below for citations).
+local settingLabelsOnlyWhenOccupied = false
+local settingMaxLabelChars = 1
+local settingOnlyActiveWorkspace = false
 
 -- The monitor this widget instance sits on. Needs the 0006 host patch
 -- (barWidget.outputName binding); on an unpatched host the accessor is
@@ -101,6 +106,22 @@ local function readSettings()
   else
     settingMaxWindowsPerWorkspace = 10
   end
+
+  -- native default false (widget_settings_registry.cpp:1032, "workspaces").
+  settingLabelsOnlyWhenOccupied = barWidget.getConfig("labels_only_when_occupied") == true
+
+  -- native intSpec("max_label_chars", 1, 1.0, 20.0, 1.0) — default 1, min 1,
+  -- max 20 (widget_settings_registry.cpp:1043; default explained as "v4
+  -- behavior" at widget_factory.cpp:667).
+  local maxLabelChars = barWidget.getConfig("max_label_chars")
+  if type(maxLabelChars) == "number" and maxLabelChars >= 1 and maxLabelChars <= 20 then
+    settingMaxLabelChars = math.floor(maxLabelChars)
+  else
+    settingMaxLabelChars = 1
+  end
+
+  -- native default false (widget_settings_registry.cpp:868, "taskbar").
+  settingOnlyActiveWorkspace = barWidget.getConfig("only_active_workspace") == true
 end
 
 local function shellQuote(value)
@@ -159,6 +180,11 @@ local function normalizeWindow(item, previous)
     appId = item.app_id or item.class or "",
     workspaceId = workspaceId,
     isFocused = item.is_focused == true,
+    -- {x, y} array from niri's scrolling-layout column/row, or nil for a
+    -- window with no layout info yet (e.g. floating). Used for ordering
+    -- only (windowsForWorkspace); WindowLayoutsChanged updates this
+    -- in-place on the retained window record (see handleLine).
+    pos = item.layout and item.layout.pos_in_scrolling_layout or nil,
   }
 end
 
@@ -231,7 +257,23 @@ windowsForWorkspace = function(wsId)
     end
   end
 
+  -- Layout position order (matches niri's own scrolling-layout column/row
+  -- order, niri_workspace_backend.cpp:467-513): nil-pos windows (no layout
+  -- seen yet) sort last, by id.
   table.sort(out, function(a, b)
+    local ap, bp = a.pos, b.pos
+    if ap == nil or bp == nil then
+      if ap == nil and bp == nil then
+        return (a.id or 0) < (b.id or 0)
+      end
+      return bp == nil -- a has a pos, b doesn't -> a first
+    end
+    if ap[1] ~= bp[1] then
+      return ap[1] < bp[1]
+    end
+    if ap[2] ~= bp[2] then
+      return ap[2] < bp[2]
+    end
     return (a.id or 0) < (b.id or 0)
   end)
 
@@ -411,6 +453,41 @@ handleLine = function(line)
       item.isFocused = item.id == id
     end
     bumpAndRender()
+    return
+  end
+
+  if type(event.WindowLayoutsChanged) == "table" then
+    -- Array of [id, {pos_in_scrolling_layout:[x,y], ...}] pairs (see
+    -- fixtures/parser-spec.md and niri_workspace_backend.cpp:467-513).
+    -- Update positions on retained window records only (unknown ids
+    -- skipped, matching the native consumer); other layout fields
+    -- (tile_size, window_offset_in_tile, ...) are unused here.
+    local changes = event.WindowLayoutsChanged.changes
+    if type(changes) ~= "table" then
+      return
+    end
+
+    local changed = false
+    for _, change in ipairs(changes) do
+      if type(change) == "table" then
+        local id = change[1]
+        local layout = change[2]
+        if id ~= nil and type(layout) == "table" then
+          local window = windowsById[id]
+          if window ~= nil then
+            local pos = layout.pos_in_scrolling_layout
+            if type(pos) == "table" then
+              window.pos = pos
+              changed = true
+            end
+          end
+        end
+      end
+    end
+
+    if changed then
+      bumpAndRender()
+    end
   end
 end
 
@@ -556,12 +633,33 @@ local function chipVariant(workspace, occupied)
   return "default" -- fill=surface_variant, label=on_surface (closest empty preset)
 end
 
+-- Numeric workspace labels (index-based) are never truncated, matching the
+-- native isNumericLabel guard (workspaces_widget.cpp:36-40).
+local function isNumericLabel(text)
+  return text ~= "" and string.match(text, "^%d+$") ~= nil
+end
+
+-- Byte-length truncation (native truncates by UTF-8 codepoint via
+-- StringUtils::truncateUtf8CodePoints, workspaces_widget.cpp:849 — no
+-- ellipsis appended, e.g. "VESKTOP" -> "VE"). Byte truncation is an
+-- accepted simplification here; ASCII workspace names are the common case
+-- and this is pure display text, not the source of truth.
+local function truncateLabel(text)
+  if isNumericLabel(text) or settingMaxLabelChars <= 0 then
+    return text
+  end
+  if string.len(text) <= settingMaxLabelChars then
+    return text
+  end
+  return string.sub(text, 1, settingMaxLabelChars)
+end
+
 local function workspaceLabel(workspace)
   if settingDisplay == "none" then
     return nil
   end
   if settingDisplay == "name" and workspace.name ~= nil and workspace.name ~= "" then
-    return workspace.name
+    return truncateLabel(workspace.name)
   end
   return tostring(workspace.idx)
 end
@@ -569,7 +667,13 @@ end
 -- Chip width: native active pills are ~2.2x wider; with the 0007 host patch
 -- (button radius/padding props) this is a real paddingH inset. Display
 -- "none" keeps a single space so the capsule body has content height.
-local function chipText(workspace)
+-- labels_only_when_occupied (native workspaces_widget.cpp:59-66): hide the
+-- label for a non-active, unoccupied workspace even when a display mode is
+-- selected, rendering a bare pill instead.
+local function chipText(workspace, occupied)
+  if settingLabelsOnlyWhenOccupied and not occupied and not workspace.isActive then
+    return " "
+  end
   local label = workspaceLabel(workspace)
   if label == nil then
     return " "
@@ -599,7 +703,7 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
   -- "has no prop, ignored" and renders the default square-ish button.
   local chip = ui.button({
     key = "ws-" .. workspace.id,
-    text = chipText(workspace),
+    text = chipText(workspace, occupied),
     fontSize = 11,
     variant = chipVariant(workspace, occupied),
     selected = false,
@@ -620,14 +724,20 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
       break
     end
     shown += 1
-    -- Focused fill=surface_variant (default variant matches exactly);
-    -- unfocused approximated with ghost (transparent) — no ButtonVariant
-    -- exposes an alpha-blended surface_variant fill, see report.
+    -- Focused-window cue (P2.5): "secondary" (colored fill=secondary,
+    -- label=on_secondary) rather than the plain "default" preset — a flat
+    -- surface_variant fill read too close to an unfocused/ghost tile at a
+    -- glance. "secondary" is already the palette's occupied-chip color
+    -- (chipVariant above), so reusing it here stays inside the existing
+    -- two-tier vocabulary (primary = active workspace, secondary = "has
+    -- attention") instead of introducing a third color. unfocused stays
+    -- ghost (transparent) — no ButtonVariant exposes an alpha-blended
+    -- surface_variant fill, see report.
     table.insert(windowButtons, ui.button({
       key = "win-" .. window.id,
       text = windowTileText(window, showTitles),
       fontSize = 11,
-      variant = window.isFocused == true and "default" or "ghost",
+      variant = window.isFocused == true and "secondary" or "ghost",
       selected = false,
       radius = 8,
       paddingH = 5,
@@ -649,7 +759,24 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
     gap = 4,
   }, windowButtons)
 
-  return ui.row({ key = "ws-group-" .. workspace.id, gap = 4 }, { chip, windowsRow })
+  -- Group capsule (native group-by-workspace look, taskbar_widget.cpp:~640):
+  -- wrap chip+windows in one filled/rounded row so an expanded, occupied
+  -- workspace reads as a single capsule. fill is explicit BOTH ways
+  -- (footgun #1 — absent props never clear on a retained node): a
+  -- collapsed or empty group gets a fully transparent fill of the same
+  -- role so the prop is always present, never omitted.
+  local capsuleFill = "surface_variant/0"
+  if expanded and occupied then
+    capsuleFill = "surface_variant/0.15"
+  end
+
+  return ui.row({
+    key = "ws-group-" .. workspace.id,
+    gap = 4,
+    fill = capsuleFill,
+    radius = 14,
+    padding = 2,
+  }, { chip, windowsRow })
 end
 
 render = function()
@@ -672,7 +799,17 @@ render = function()
     -- Urgent workspaces stay visible even when empties are hidden,
     -- matching the native widget's empty logic (workspaces_widget.cpp:21).
     if settingShowEmptyWorkspaces or occupied or workspace.isActive or workspace.isUrgent then
-      table.insert(groups, buildWorkspaceGroup(workspace, windows, occupied, showTitles))
+      -- only_active_workspace (native taskbar_widget.cpp:1881): chips for
+      -- every workspace stay, but window tiles only build for each
+      -- output's active workspace — `occupied` above still reflects real
+      -- window counts (unaffected; that drives chip color/show-empty
+      -- logic, not tile visibility), only the tile list handed to the
+      -- group is emptied.
+      local tileWindows = windows
+      if settingOnlyActiveWorkspace and not workspace.isActive then
+        tileWindows = {}
+      end
+      table.insert(groups, buildWorkspaceGroup(workspace, tileWindows, occupied, showTitles))
     end
   end
 

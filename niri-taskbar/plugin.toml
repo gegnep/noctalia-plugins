@@ -55,3 +55,27 @@ entry = "taskbar.luau"
   min = 1
   max = 30
   step = 1
+
+  [[widget.setting]]
+  key = "labels_only_when_occupied"
+  type = "bool"
+  label = "Labels only when occupied"
+  description = "Hide the label on empty, inactive workspace chips, leaving a bare pill."
+  default = false
+
+  [[widget.setting]]
+  key = "max_label_chars"
+  type = "int"
+  label = "Max label characters"
+  description = "Truncate workspace name labels to this many characters. Purely numeric labels are never truncated."
+  default = 1
+  min = 1
+  max = 20
+  step = 1
+
+  [[widget.setting]]
+  key = "only_active_workspace"
+  type = "bool"
+  label = "Only active workspace windows"
+  description = "Show window tiles only for each monitor's active workspace. Other workspace chips still render."
+  default = false

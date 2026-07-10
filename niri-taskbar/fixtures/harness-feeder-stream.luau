@@ -53,3 +53,12 @@ assert(windowsById[86] ~= nil and windowsById[86].workspaceId == 1, "window 86 w
 for _, id in ipairs({ 140, 141, 93 }) do
   assert(windowsById[id] == nil, "closed window still present: " .. id)
 end
+
+-- WindowLayoutsChanged (P2.5): event-stream.jsonl carries 8 of these for
+-- windows 22/86, alternating positions; the last one wins:
+--   jq -s '[.[]|select(.WindowLayoutsChanged)][-1]' event-stream.jsonl
+--   => 22 -> [3,1], 86 -> [4,1]
+assert(windowsById[22] ~= nil and windowsById[22].pos ~= nil, "window 22 pos missing")
+assert(windowsById[22].pos[1] == 3 and windowsById[22].pos[2] == 1, "window 22 pos mismatch")
+assert(windowsById[86] ~= nil and windowsById[86].pos ~= nil, "window 86 pos missing")
+assert(windowsById[86].pos[1] == 4 and windowsById[86].pos[2] == 1, "window 86 pos mismatch")

@@ -80,12 +80,30 @@ Window `id` gains focus, all others lose it. Treat `id:null`/absent as
 "nothing focused" (defensive). Not needed for v1 rendering; track the
 boolean anyway (cheap, enables the active-window ring later).
 
+### WindowLayoutsChanged — incremental position update (P2.5)
+```json
+{"WindowLayoutsChanged":{"changes":[[86,{"pos_in_scrolling_layout":[3,1],
+ "tile_size":[1268.0,1396.0],"window_size":[1260,1388],
+ "tile_pos_in_workspace_view":null,"window_offset_in_tile":[4.0,4.0]}],
+ [22,{"pos_in_scrolling_layout":[4,1], …}]]}}
+```
+`changes` is an array of `[id, layout]` pairs (observed 8 times in
+`event-stream.jsonl`). For each pair, look up the window by `id` in the
+current map — unknown ids are skipped (mirrors noctalia's own consumer,
+`niri_workspace_backend.cpp:467-513`, which never creates a window from
+this event) — and update `pos` in place from
+`layout.pos_in_scrolling_layout` (`{x, y}`, may be absent/null for a
+floating window with no scrolling-layout slot). Only `pos_in_scrolling_layout`
+is kept; `tile_size`, `window_size`, `tile_pos_in_workspace_view`,
+`window_offset_in_tile` are ignored. Bump generation + render only if at
+least one position actually changed.
+
 ## Events ignored (observed in dump, skip silently)
 
-`WindowFocusTimestampChanged`, `WindowLayoutsChanged`,
-`WorkspaceActiveWindowChanged`, `OverviewOpenedOrClosed`, `ConfigLoaded`,
-`KeyboardLayoutsChanged`, `CastsChanged` — and ANY unrecognized event name
-(forward compatibility; never error on unknown keys).
+`WindowFocusTimestampChanged`, `WorkspaceActiveWindowChanged`,
+`OverviewOpenedOrClosed`, `ConfigLoaded`, `KeyboardLayoutsChanged`,
+`CastsChanged` — and ANY unrecognized event name (forward compatibility;
+never error on unknown keys).
 
 ## Snapshots (resync path)
 
