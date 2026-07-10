@@ -29,9 +29,13 @@ Upstream status as of this writing:
   awaiting review.
 - Patch 0006 (`barWidget.outputName`, needed by niri-taskbar): submitted as
   [noctalia-dev/noctalia#3352](https://github.com/noctalia-dev/noctalia/pull/3352).
-- Patches 0007–0009 (niri-taskbar's capsule chips, per-workspace hover, and
-  native icon resolution): not yet submitted upstream; apply them locally
-  from `noctalia-patches/` in the meantime.
+- Patch 0007 (button radius/padding — capsule chips): submitted as
+  [noctalia-dev/noctalia#3355](https://github.com/noctalia-dev/noctalia/pull/3355).
+- Patch 0009 (`noctalia.appIconPath` — native icon resolution): submitted as
+  [noctalia-dev/noctalia#3356](https://github.com/noctalia-dev/noctalia/pull/3356).
+- Patch 0008 (per-node `onHover` — per-workspace hover): stacks on 0007;
+  its PR follows once #3355 merges. Apply locally from `noctalia-patches/`
+  in the meantime.
 
 Each plugin runs on a stock Noctalia build too — see its README for exactly
 how it degrades without its patches applied.
