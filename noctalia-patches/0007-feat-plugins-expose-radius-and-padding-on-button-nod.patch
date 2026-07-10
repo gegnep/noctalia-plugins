@@ -1,4 +1,4 @@
-From 9522b64d6b99ff687a651f4b429069716bd3536b Mon Sep 17 00:00:00 2001
+From dffcafa1e9ace7a7f3ba0dc734ca617bb8103ab0 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Fri, 10 Jul 2026 01:18:21 -0400
 Subject: [PATCH] feat(plugins): expose radius and padding on button nodes
@@ -9,19 +9,25 @@ plugin chips can render as capsules without giving up click handling.
 
 Written with AI assistance (Claude Fable 5).
 ---
- src/ui/ui_tree_reconciler.cpp | 17 ++++++++++++++++-
- 1 file changed, 16 insertions(+), 1 deletion(-)
+ src/ui/ui_tree_reconciler.cpp | 23 +++++++++++++++++++----
+ 1 file changed, 19 insertions(+), 4 deletions(-)
 
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index 3041187..a8d8d08 100644
+index 3041187..48d7110 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
-@@ -282,7 +282,8 @@ namespace ui {
-       static const std::unordered_set<std::string> kButton = {"width",     "height",  "flexGrow",     "opacity",
-                                                               "visible",   "text",    "glyph",        "fontSize",
-                                                               "glyphSize", "variant", "contentAlign", "enabled",
+@@ -279,10 +279,11 @@ namespace ui {
+                                                                  "color",   "spacing", "orientation"};
+       static const std::unordered_set<std::string> kProgress = {"width",    "height", "flexGrow", "opacity", "visible",
+                                                                 "progress", "fill",   "track",    "radius"};
+-      static const std::unordered_set<std::string> kButton = {"width",     "height",  "flexGrow",     "opacity",
+-                                                              "visible",   "text",    "glyph",        "fontSize",
+-                                                              "glyphSize", "variant", "contentAlign", "enabled",
 -                                                              "selected",  "onClick", "onRightClick"};
-+                                                              "selected",  "onClick", "onRightClick", "radius",
++      static const std::unordered_set<std::string> kButton = {"width",     "height",   "flexGrow",     "opacity",
++                                                              "visible",   "text",     "glyph",        "fontSize",
++                                                              "glyphSize", "variant",  "contentAlign", "enabled",
++                                                              "selected",  "onClick",  "onRightClick", "radius",
 +                                                              "padding",   "paddingH", "paddingV"};
        static const std::unordered_set<std::string> kGraph = {"width",   "height",    "flexGrow",   "opacity",
                                                               "visible", "values",    "values2",    "color",

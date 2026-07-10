@@ -1,4 +1,4 @@
-From 321f109c9e6c2ab1a3aa894ab34229540490ea00 Mon Sep 17 00:00:00 2001
+From da4e403d44b41e777f40f668078c5ec2e5006792 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Fri, 10 Jul 2026 01:32:10 -0400
 Subject: [PATCH] feat(plugins): expose onHover callback on button, box, and
@@ -16,7 +16,7 @@ Assisted with AI tooling.
  1 file changed, 62 insertions(+), 10 deletions(-)
 
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index a8d8d08..b2f6ce8 100644
+index 48d7110..cc7feb2 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
 @@ -242,14 +242,15 @@ namespace ui {
@@ -57,11 +57,11 @@ index a8d8d08..b2f6ce8 100644
                                                                   "opacity", "visible", "thickness",
                                                                   "color",   "spacing", "orientation"};
 @@ -283,7 +284,7 @@ namespace ui {
-                                                               "visible",   "text",    "glyph",        "fontSize",
-                                                               "glyphSize", "variant", "contentAlign", "enabled",
-                                                               "selected",  "onClick", "onRightClick", "radius",
+                                                               "visible",   "text",     "glyph",        "fontSize",
+                                                               "glyphSize", "variant",  "contentAlign", "enabled",
+                                                               "selected",  "onClick",  "onRightClick", "radius",
 -                                                              "padding",   "paddingH", "paddingV"};
-+                                                              "padding",   "paddingH", "paddingV",    "onHover"};
++                                                              "padding",   "paddingH", "paddingV",     "onHover"};
        static const std::unordered_set<std::string> kGraph = {"width",   "height",    "flexGrow",   "opacity",
                                                               "visible", "values",    "values2",    "color",
                                                               "color2",  "lineWidth", "fillOpacity"};
