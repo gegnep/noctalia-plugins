@@ -14,11 +14,11 @@ id = "taskbar"
 entry = "taskbar.luau"
 
   [[widget.setting]]
-  key = "niri_output"
-  type = "string"
-  label = "Output filter"
-  description = "Set a connector name (e.g. DP-3) to show only that output's workspaces; empty shows all. Set per bar placement."
-  default = ""
+  key = "focused_output_only"
+  type = "bool"
+  label = "Focused monitor only"
+  description = "Show only the focused monitor's workspaces instead of this monitor's."
+  default = false
 
   [[widget.setting]]
   key = "show_empty_workspaces"
@@ -28,11 +28,16 @@ entry = "taskbar.luau"
   default = true
 
   [[widget.setting]]
-  key = "show_workspace_names"
-  type = "bool"
-  label = "Show workspace names"
-  description = "Show the workspace name on its chip when set, falling back to the index. Off always shows the index."
-  default = false
+  key = "display"
+  type = "select"
+  label = "Workspace label"
+  description = "What each chip shows: the workspace index, its name (falls back to the index), or a bare pill."
+  default = "id"
+  options = [
+    { value = "id", label = "Id" },
+    { value = "name", label = "Name" },
+    { value = "none", label = "None" },
+  ]
 
   [[widget.setting]]
   key = "show_window_titles"

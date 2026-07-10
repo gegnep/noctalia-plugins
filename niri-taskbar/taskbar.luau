@@ -32,11 +32,22 @@ local fallbackTokenCounter = 0
 -- Defaults here match the manifest's `default` so the harness (which stubs
 -- getConfig to return nil for every key) exercises the same fallback path as
 -- an unset setting on a live host.
-local settingNiriOutput = ""
+local settingFocusedOutputOnly = false
 local settingShowEmptyWorkspaces = true
-local settingShowWorkspaceNames = false
+local settingDisplay = "id" -- "id" | "name" | "none" (mirrors the native widget)
 local settingShowWindowTitles = false
 local settingMaxWindowsPerWorkspace = 10
+
+-- The monitor this widget instance sits on. Needs the 0006 host patch
+-- (barWidget.outputName binding); on an unpatched host the accessor is
+-- absent and we degrade to showing every output's workspaces.
+local ownOutput = nil
+if type(barWidget.outputName) == "function" then
+  local ok, name = pcall(barWidget.outputName)
+  if ok and type(name) == "string" and name ~= "" then
+    ownOutput = name
+  end
+end
 
 -- Callback env for the getfenv per-item-callback idiom (see claude-launcher
 -- panel.luau: env[name] = function ... end, names keyed by stable ids).
@@ -70,13 +81,18 @@ end
 -- onConfigChanged. getConfig returns nil for an unset key, so every branch
 -- below has an explicit default matching the manifest.
 local function readSettings()
-  local outputRaw = barWidget.getConfig("niri_output")
-  settingNiriOutput = type(outputRaw) == "string" and trim(outputRaw) or ""
+  settingFocusedOutputOnly = barWidget.getConfig("focused_output_only") == true
 
   local showEmpty = barWidget.getConfig("show_empty_workspaces")
   settingShowEmptyWorkspaces = showEmpty ~= false
 
-  settingShowWorkspaceNames = barWidget.getConfig("show_workspace_names") == true
+  local display = barWidget.getConfig("display")
+  if display == "name" or display == "none" then
+    settingDisplay = display
+  else
+    settingDisplay = "id"
+  end
+
   settingShowWindowTitles = barWidget.getConfig("show_window_titles") == true
 
   local maxWindows = barWidget.getConfig("max_windows_per_workspace")
@@ -541,7 +557,10 @@ local function chipVariant(workspace, occupied)
 end
 
 local function workspaceLabel(workspace)
-  if settingShowWorkspaceNames and workspace.name ~= nil and workspace.name ~= "" then
+  if settingDisplay == "none" then
+    return nil
+  end
+  if settingDisplay == "name" and workspace.name ~= nil and workspace.name ~= "" then
     return workspace.name
   end
   return tostring(workspace.idx)
@@ -549,9 +568,13 @@ end
 
 -- Button has no paddingH prop (kButton lacks it), so the native "active pill
 -- is ~2.2x wider" is approximated with literal padding spaces rather than a
--- real inset — an intentional deviation, see report.
+-- real inset — an intentional deviation, see report. Display "none" renders
+-- a bare pill: spaces give the capsule body its width.
 local function chipText(workspace)
   local label = workspaceLabel(workspace)
+  if label == nil then
+    return workspace.isActive and "      " or "  "
+  end
   if workspace.isActive then
     return "  " .. label .. "  "
   end
@@ -619,7 +642,13 @@ local function buildWorkspaceGroup(workspace, windows, occupied, showTitles)
 end
 
 render = function()
-  local outputFilter = settingNiriOutput ~= "" and settingNiriOutput or nil
+  -- Own monitor by default (nil = all outputs on an unpatched host);
+  -- focused_output_only follows keyboard focus via stream state instead
+  -- (WorkspaceActivated re-renders keep it live as focus moves).
+  local outputFilter = ownOutput
+  if settingFocusedOutputOnly then
+    outputFilter = focusedOutput()
+  end
   local vertical = barWidget.isVertical() == true
   -- Vertical bars force titles off regardless of the setting (narrow column
   -- has no room for a title next to the initial tile).
