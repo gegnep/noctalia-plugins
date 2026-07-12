@@ -32,7 +32,7 @@ API key; it bills against your Pro/Max subscription.
 A combined niri workspace/taskbar bar widget: stretchable idle chips that
 expand on hover into a pill of real app-icon window tiles.
 
-![niri-taskbar collapsed bar strip](./niri-taskbar/screenshots/bar-strip.png)
+![niri-taskbar chip expanded on hover, showing window icon tiles](./niri-taskbar/screenshots/expanded-chip.png)
 
 **[Full README](./niri-taskbar)**
 
