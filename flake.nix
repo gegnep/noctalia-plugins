@@ -18,6 +18,7 @@
           jq
           fd
           ripgrep
+          imagemagick # cropping/resizing README screenshots
         ];
       };
     };

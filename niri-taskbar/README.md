@@ -2,26 +2,35 @@
 
 A combined workspace/taskbar bar widget for [niri](https://github.com/YaLTeR/niri),
 built for [Noctalia](https://noctalia.dev) v5. It renders compact workspace
-chips colored like Noctalia's native workspaces widget — active = primary,
-occupied = secondary, urgent = error, empty = muted — and on hover a chip
+chips colored like Noctalia's native workspaces widget (active = primary,
+occupied = secondary, urgent = error, empty = muted), and on hover a chip
 rounds out and grows into a tinted pill containing real app-icon tiles for
 every window on that workspace.
 
-<!-- screenshot: default bar strip, all chips collapsed -->
-<!-- screenshot: a chip expanded on hover showing window icon tiles -->
-<!-- screenshot: an urgent workspace chip -->
+![niri-taskbar default bar strip, all chips collapsed](./screenshots/bar-strip.png)
+![niri-taskbar chip expanded on hover, showing window icon tiles](./screenshots/expanded-chip.png)
 
-niri only — it drives itself entirely off `niri msg --json event-stream`.
+niri only; it drives itself entirely off `niri msg --json event-stream`.
 
-### Features
+## Table of Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Settings](#settings)
+- [Notes and Limitations](#notes-and-limitations)
+- [Development](#development)
+- [License](#license)
+
+## Features
 
 - Workspace chips matching the native workspaces widget's palette: active =
   primary, occupied = secondary, urgent = error, empty = muted
 - Idle chips are stretchable via `chip_ratio`, from a 100% circle to a 400%
   line (default 140%, a compact oval), and always round back into a circle
   on hover
-- Hover a chip to expand it into a tinted pill — a primary hairline border
-  around app-icon tiles for every window on that workspace — fading in and
+- Hover a chip to expand it into a tinted pill (a primary hairline border
+  around app-icon tiles for every window on that workspace), fading in and
   out at a configurable speed (`expand_speed`); click a tile to focus that
   window
 - The focused window's tile gets a primary dot underneath it; an urgent
@@ -29,34 +38,27 @@ niri only — it drives itself entirely off `niri msg --json event-stream`.
 - Four label modes (`display`): workspace id, name (falls back to id),
   window count, or a bare pill with no label
 - Per-workspace hover: hovering one chip expands only that chip, not every
-  chip on the bar (needs the 0008 host patch — see Requirements)
+  chip on the bar (needs the `onHover` patch; see Requirements)
 - Click a chip to focus its workspace; on a multi-monitor setup this chains
   a focus-monitor call first so cross-monitor chip clicks land correctly
 - Windows within an expanded chip are ordered by niri's own scrolling-layout
   column/window position, not arrival order
 - Scoped to its own monitor by default, or the compositor's focused monitor
   regardless of which bar instance you're looking at (`focused_output_only`,
-  needs `barWidget.outputName`, shipped upstream — see Requirements)
+  needs `barWidget.outputName`, shipped upstream; see Requirements)
 - Live via `niri msg --json event-stream`, with a 30-second self-healing
   resync in case an event is ever missed
 - Real app icons resolved through Noctalia's own icon machinery (needs
   `noctalia.appIconPath`, shipped upstream), falling back to an
   initial-letter tile otherwise
 
-### Placement tip
-
-In the bar's **center** section, every expand/collapse re-centers the whole
-widget, so the pill grows in both directions and the workspace under your
-cursor visibly shifts. In the **left** section it anchors in place and only
-grows rightward, so the hovered chip stays under the cursor — recommended.
-
-### Requirements
+## Requirements
 
 - niri as the compositor.
 - A Noctalia v5 build. The widget runs on stock Noctalia but looks and
   behaves best with everything below available. Two capabilities shipped
   upstream and just need a current build; the other two still need a local
-  patch from [`../noctalia-patches/`](../noctalia-patches) — see that
+  patch from [`../noctalia-patches/`](../noctalia-patches); see that
   directory's README for what each one does and how to apply them.
 
   | Capability | Adds | Without it |
@@ -66,28 +68,32 @@ grows rightward, so the hovered chip stays under the cursor — recommended.
   | 0007 button radius/padding (local patch, [#3355](https://github.com/noctalia-dev/noctalia/pull/3355) open) | Capsule-shaped chips | Square chips |
   | 0008 `onHover` on button/box/image (local patch, no PR yet) | Per-workspace hover (only the hovered chip expands) | Hovering any chip expands all of them (with a short collapse-grace fallback) |
 
-### Install
+## Install
 
-**As a path source** (tracks this repo, no copying):
+**As a plugin source** (Noctalia clones and manages the repo itself, no
+local checkout needed):
 
 ```sh
-noctalia msg plugins source add gegnep-plugins path /path/to/noctalia-plugins
+noctalia msg plugins source add gegnep-plugins git https://github.com/gegnep/noctalia-plugins
 noctalia msg plugins enable gegnep/niri-taskbar
 ```
 
-(or add the repo as a plugin source in Settings → Plugins and install
-**Niri Taskbar** from the plugin browser)
+Or add the repo as a plugin source in Settings, Plugins, and install
+**Niri Taskbar** from the plugin browser.
 
-**Symlink** into Noctalia's local plugin directory:
+**Symlink** into Noctalia's local plugin directory (for local development or
+if you'd rather manage the checkout yourself):
 
 ```sh
+git clone https://github.com/gegnep/noctalia-plugins
+cd noctalia-plugins
 ln -sfn "$PWD/niri-taskbar" ~/.local/share/noctalia/plugins/niri-taskbar
 ```
 
-Then add the **Niri Taskbar** widget from Settings → Bar like any other bar
+Then add the **Niri Taskbar** widget from Settings, Bar, like any other bar
 widget.
 
-### Settings
+## Settings
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -108,29 +114,33 @@ widget.
 | `show_focus_dot` | bool | `true` | Show a dot under the focused (primary) and urgent (error-colored) windows' tiles |
 | `pill_tint` | int | `30` | Expanded pill tint strength, as a percentage |
 
-### Development
+## Notes and Limitations
+
+- Labels auto-hide on very flat idle chips (high `chip_ratio`) since there's
+  no room to render text.
+- Without the `onHover` patch, hovering any chip expands all of them, with a
+  short collapse-grace fallback instead of true per-workspace hover.
+- The 30-second resync only replaces state if nothing changed while it was
+  in flight; a live event always wins over a stale snapshot.
+
+## Development
 
 ```sh
 nix develop   # or let direnv load it automatically
 ```
 
-Lint the manifest and settings wiring (note: this does not parse Luau —
-the fixture harness below is the real code gate):
+Linting the manifest and settings wiring does not parse Luau; the fixture
+harness below is the real code gate.
 
 ```sh
-noctalia plugins lint niri-taskbar
+noctalia plugins lint niri-taskbar   # lint the manifest and settings wiring
+./niri-taskbar/fixtures/dry-run.sh   # run the offline fixture harness
 ```
 
-Run the offline fixture harness (no running Noctalia or niri instance
-needed):
-
-```sh
-./niri-taskbar/fixtures/dry-run.sh
-```
-
-This feeds captured `niri msg --json event-stream` output, workspace/window
-snapshots, and icon-resolution scenarios through `taskbar.luau`'s parser and
-render logic, checking the resulting state against expectations. See
+The fixture harness feeds captured `niri msg --json event-stream` output,
+workspace/window snapshots, and icon-resolution scenarios through
+`taskbar.luau`'s parser and render logic, checking the resulting state
+against expectations. See
 [`fixtures/parser-spec.md`](./fixtures/parser-spec.md) for the event state
 machine.
 
@@ -141,19 +151,10 @@ fixtures and spec from a live session:
 ./niri-taskbar/fixtures/capture-dumps.sh
 ```
 
-Plugin structure: a single `taskbar.luau` implements the whole widget (no
-separate service). It holds workspace/window state in memory, keyed by
-niri's own ids, and reconciles on every IPC event plus the periodic resync.
+Everything lives in a single `taskbar.luau` (no separate service). It holds
+workspace/window state in memory, keyed by niri's own ids, and reconciles
+on every IPC event plus the periodic resync.
 
-`catalog.toml` (required for consuming this repo as a git plugin source) is
-auto-generated from `*/plugin.toml` — regenerate with
-`python3 tools/update-catalog.py` (CI also does this on push to `main`).
-Don't edit it by hand.
-
-History is commit-per-feature — see `git log` for how the widget evolved
-from a static hover-expand spike to live niri IPC wiring, native-parity
-styling, and icon resolution.
-
-### License
+## License
 
 [MIT](../LICENSE).
