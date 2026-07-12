@@ -82,9 +82,10 @@ local settingPillTint = 30
 -- repeatedly cross the host boundary.
 local iconCache = {}
 
--- The monitor this widget instance sits on. Needs the 0006 host patch
--- (barWidget.outputName binding); on an unpatched host the accessor is
--- absent and we degrade to showing every output's workspaces.
+-- The monitor this widget instance sits on. Needs barWidget.outputName,
+-- shipped upstream in noctalia-dev/noctalia#3352 (merged 2026-07-11); on an
+-- older host the accessor is absent and we degrade to showing every
+-- output's workspaces.
 local ownOutput = nil
 if type(barWidget.outputName) == "function" then
   local ok, name = pcall(barWidget.outputName)

@@ -36,11 +36,12 @@ niri only — it drives itself entirely off `niri msg --json event-stream`.
   column/window position, not arrival order
 - Scoped to its own monitor by default, or the compositor's focused monitor
   regardless of which bar instance you're looking at (`focused_output_only`,
-  needs the 0006 host patch — see Requirements)
+  needs `barWidget.outputName`, shipped upstream — see Requirements)
 - Live via `niri msg --json event-stream`, with a 30-second self-healing
   resync in case an event is ever missed
-- Real app icons resolved through Noctalia's own icon machinery (needs the
-  0009 host patch), falling back to an initial-letter tile otherwise
+- Real app icons resolved through Noctalia's own icon machinery (needs
+  `noctalia.appIconPath`, shipped upstream), falling back to an
+  initial-letter tile otherwise
 
 ### Placement tip
 
@@ -53,17 +54,17 @@ grows rightward, so the hovered chip stays under the cursor — recommended.
 
 - niri as the compositor.
 - A Noctalia v5 build. The widget runs on stock Noctalia but looks and
-  behaves best with the host patches in
-  [`../noctalia-patches/`](../noctalia-patches) applied — see that
-  directory's README for what each one does and how to apply them. Specific
-  patches this widget uses, and how it degrades without each:
+  behaves best with everything below available. Two capabilities shipped
+  upstream and just need a current build; the other two still need a local
+  patch from [`../noctalia-patches/`](../noctalia-patches) — see that
+  directory's README for what each one does and how to apply them.
 
-  | Patch | Adds | Without it |
+  | Capability | Adds | Without it |
   |---|---|---|
-  | 0006 `barWidget.outputName` | Scopes the widget to its own monitor | Every instance shows all outputs' workspaces |
-  | 0007 button radius/padding | Capsule-shaped chips | Square chips |
-  | 0008 `onHover` on button/box/image | Per-workspace hover (only the hovered chip expands) | Hovering any chip expands all of them (with a short collapse-grace fallback) |
-  | 0009 `noctalia.appIconPath` | Native icon resolution for window tiles | Tiles fall back to an initial-letter glyph |
+  | `barWidget.outputName` (upstream, merged [#3352](https://github.com/noctalia-dev/noctalia/pull/3352)) | Scopes the widget to its own monitor | Every instance shows all outputs' workspaces |
+  | `noctalia.appIconPath` (upstream, merged [#3356](https://github.com/noctalia-dev/noctalia/pull/3356)) | Native icon resolution for window tiles | Tiles fall back to an initial-letter glyph |
+  | 0007 button radius/padding (local patch, [#3355](https://github.com/noctalia-dev/noctalia/pull/3355) open) | Capsule-shaped chips | Square chips |
+  | 0008 `onHover` on button/box/image (local patch, no PR yet) | Per-workspace hover (only the hovered chip expands) | Hovering any chip expands all of them (with a short collapse-grace fallback) |
 
 ### Install
 

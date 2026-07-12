@@ -27,15 +27,19 @@ Upstream status as of this writing:
 - Patches 0001–0005 (claude-launcher's UI needs): submitted as
   [noctalia-dev/noctalia#3327](https://github.com/noctalia-dev/noctalia/pull/3327),
   awaiting review.
-- Patch 0006 (`barWidget.outputName`, needed by niri-taskbar): submitted as
-  [noctalia-dev/noctalia#3352](https://github.com/noctalia-dev/noctalia/pull/3352).
 - Patch 0007 (button radius/padding — capsule chips): submitted as
-  [noctalia-dev/noctalia#3355](https://github.com/noctalia-dev/noctalia/pull/3355).
-- Patch 0009 (`noctalia.appIconPath` — native icon resolution): submitted as
-  [noctalia-dev/noctalia#3356](https://github.com/noctalia-dev/noctalia/pull/3356).
+  [noctalia-dev/noctalia#3355](https://github.com/noctalia-dev/noctalia/pull/3355),
+  awaiting review.
 - Patch 0008 (per-node `onHover` — per-workspace hover): stacks on 0007;
   its PR follows once #3355 merges. Apply locally from `noctalia-patches/`
   in the meantime.
+- `barWidget.outputName` (needed by niri-taskbar) and `noctalia.appIconPath`
+  (native icon resolution) merged upstream —
+  [noctalia-dev/noctalia#3352](https://github.com/noctalia-dev/noctalia/pull/3352)
+  and
+  [noctalia-dev/noctalia#3356](https://github.com/noctalia-dev/noctalia/pull/3356)
+  — and are no longer carried as local patches; any noctalia build off
+  current `main` or the `cachix` branch already has them.
 
 Each plugin runs on a stock Noctalia build too — see its README for exactly
 how it degrades without its patches applied.
