@@ -62,7 +62,7 @@ local activeStreamToken = ""
 local resyncMs = 0
 local fallbackTokenCounter = 0
 
--- P2 settings cache (read via barWidget.getConfig, refreshed by onConfigChanged).
+-- P2 settings cache (read via noctalia.getConfig, refreshed by onConfigChanged).
 -- Defaults here match the manifest's `default` so the harness (which stubs
 -- getConfig to return nil for every key) exercises the same fallback path as
 -- an unset setting on a live host.
@@ -128,31 +128,31 @@ local function trim(s)
   return (string.gsub(tostring(s or ""), "^%s*(.-)%s*$", "%1"))
 end
 
--- Re-read [[widget.setting]] values (verified via barWidget.getConfig, see
+-- Re-read [[widget.setting]] values (verified via noctalia.getConfig, see
 -- noctalia.d.luau:190) into locals. Called once at startup and again from
 -- onConfigChanged. getConfig returns nil for an unset key, so every branch
 -- below has an explicit default matching the manifest.
 local function readSettings()
-  settingFocusedOutputOnly = barWidget.getConfig("focused_output_only") == true
+  settingFocusedOutputOnly = noctalia.getConfig("focused_output_only") == true
 
-  local showEmpty = barWidget.getConfig("show_empty_workspaces")
+  local showEmpty = noctalia.getConfig("show_empty_workspaces")
   settingShowEmptyWorkspaces = showEmpty ~= false
 
-  local display = barWidget.getConfig("display")
+  local display = noctalia.getConfig("display")
   if display == "name" or display == "none" or display == "windows" then
     settingDisplay = display
   else
     settingDisplay = "id"
   end
 
-  local windowTitles = barWidget.getConfig("window_titles")
+  local windowTitles = noctalia.getConfig("window_titles")
   if windowTitles == "hover" or windowTitles == "always" then
     settingWindowTitles = windowTitles
   else
     settingWindowTitles = "off"
   end
 
-  local maxWindows = barWidget.getConfig("max_windows_per_workspace")
+  local maxWindows = noctalia.getConfig("max_windows_per_workspace")
   if type(maxWindows) == "number" and maxWindows >= 1 then
     settingMaxWindowsPerWorkspace = math.floor(maxWindows)
   else
@@ -160,12 +160,12 @@ local function readSettings()
   end
 
   -- native default false (widget_settings_registry.cpp:1032, "workspaces").
-  settingLabelsOnlyWhenOccupied = barWidget.getConfig("labels_only_when_occupied") == true
+  settingLabelsOnlyWhenOccupied = noctalia.getConfig("labels_only_when_occupied") == true
 
   -- native intSpec("max_label_chars", 1, 1.0, 20.0, 1.0) — default 1, min 1,
   -- max 20 (widget_settings_registry.cpp:1043; default explained as "v4
   -- behavior" at widget_factory.cpp:667).
-  local maxLabelChars = barWidget.getConfig("max_label_chars")
+  local maxLabelChars = noctalia.getConfig("max_label_chars")
   if type(maxLabelChars) == "number" and maxLabelChars >= 1 and maxLabelChars <= 20 then
     settingMaxLabelChars = math.floor(maxLabelChars)
   else
@@ -173,44 +173,44 @@ local function readSettings()
   end
 
   -- native default false (widget_settings_registry.cpp:868, "taskbar").
-  settingOnlyActiveWorkspace = barWidget.getConfig("only_active_workspace") == true
+  settingOnlyActiveWorkspace = noctalia.getConfig("only_active_workspace") == true
 
-  local iconSize = barWidget.getConfig("icon_size")
+  local iconSize = noctalia.getConfig("icon_size")
   if type(iconSize) == "number" and iconSize >= 12 and iconSize <= 32 then
     settingIconSize = math.floor(iconSize)
   else
     settingIconSize = 16
   end
 
-  local chipSize = barWidget.getConfig("chip_size")
+  local chipSize = noctalia.getConfig("chip_size")
   if type(chipSize) == "number" and chipSize >= 12 and chipSize <= 24 then
     settingChipSize = math.floor(chipSize)
   else
     settingChipSize = 16
   end
 
-  local chipRatio = barWidget.getConfig("chip_ratio")
+  local chipRatio = noctalia.getConfig("chip_ratio")
   if type(chipRatio) == "number" and chipRatio >= 100 and chipRatio <= 400 then
     settingChipRatio = math.floor(chipRatio)
   else
     settingChipRatio = 140
   end
 
-  local chipSpacing = barWidget.getConfig("chip_spacing")
+  local chipSpacing = noctalia.getConfig("chip_spacing")
   if type(chipSpacing) == "number" and chipSpacing >= 0 and chipSpacing <= 12 then
     settingChipSpacing = math.floor(chipSpacing)
   else
     settingChipSpacing = 3
   end
 
-  local collapseDelay = barWidget.getConfig("collapse_delay_ms")
+  local collapseDelay = noctalia.getConfig("collapse_delay_ms")
   if type(collapseDelay) == "number" and collapseDelay >= 250 and collapseDelay <= 5000 then
     COLLAPSE_GRACE_MS = math.floor(collapseDelay)
   else
     COLLAPSE_GRACE_MS = 1250
   end
 
-  local expandSpeed = barWidget.getConfig("expand_speed")
+  local expandSpeed = noctalia.getConfig("expand_speed")
   if expandSpeed == "fast" then
     FADE_TAU_MS = 40
   elseif expandSpeed == "slow" then
@@ -219,9 +219,9 @@ local function readSettings()
     FADE_TAU_MS = 65
   end
 
-  settingShowFocusDot = barWidget.getConfig("show_focus_dot") ~= false
+  settingShowFocusDot = noctalia.getConfig("show_focus_dot") ~= false
 
-  local pillTint = barWidget.getConfig("pill_tint")
+  local pillTint = noctalia.getConfig("pill_tint")
   if type(pillTint) == "number" and pillTint >= 0 and pillTint <= 60 then
     settingPillTint = math.floor(pillTint)
   else

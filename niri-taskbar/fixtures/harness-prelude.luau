@@ -187,15 +187,18 @@ barWidget = {
     assert(type(tree) == "table" and tree.type ~= nil, "barWidget.render: bad tree")
     table.insert(HARNESS_RENDERS, tree)
   end,
-  getConfig = function(key)
-    return HARNESS_CONFIG[key]
-  end,
   isVertical = function()
     return HARNESS_IS_VERTICAL == true
   end,
 }
 
 noctalia = {
+  -- Settings live on noctalia.getConfig since upstream d597782e8 made it the
+  -- sole config accessor (barWidget.getConfig was removed outright — calling
+  -- it errors, it doesn't return nil).
+  getConfig = function(key)
+    return HARNESS_CONFIG[key]
+  end,
   notify = function(title, body)
     table.insert(HARNESS_NOTIFICATIONS, { title = title, body = body })
   end,
