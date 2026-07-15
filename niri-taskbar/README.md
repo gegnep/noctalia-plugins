@@ -65,8 +65,13 @@ niri only; it drives itself entirely off `niri msg --json event-stream`.
   |---|---|---|
   | `barWidget.outputName` (upstream, merged [#3352](https://github.com/noctalia-dev/noctalia/pull/3352)) | Scopes the widget to its own monitor | Every instance shows all outputs' workspaces |
   | `noctalia.appIconPath` (upstream, merged [#3356](https://github.com/noctalia-dev/noctalia/pull/3356)) | Native icon resolution for window tiles | Tiles fall back to an initial-letter glyph |
-  | 0007 button radius/padding (local patch, [#3355](https://github.com/noctalia-dev/noctalia/pull/3355) open) | Capsule-shaped chips | Square chips |
-  | 0008 `onHover` on button/box/image (local patch, no PR yet) | Per-workspace hover (only the hovered chip expands) | Hovering any chip expands all of them (with a short collapse-grace fallback) |
+  | 0009 row/label `onClick`/`onHover` (local patch, no PR yet) | Workspace chips are clickable and hoverable (click-to-switch, per-workspace expand) | Chips still render fully styled (row already supports width/height/radius/fill/border/align/justify natively) but are INERT — no click, no hover, only the widget-level expand-all fallback still works |
+  | 0008 `onHover` on button/box/image (local patch, no PR yet) | Window-tile hover (grey hover dot, per-tile group-keep-alive) | Window tiles lose their grey hover dot; chip hover (0009, above) is unaffected |
+
+  The workspace chip used to be a `ui.button` and needed a since-rejected
+  0007 patch (button radius/padding) for its shape; it's now a `ui.row` +
+  `ui.label`, which has always supported that geometry with no patch at
+  all — only its clickability now depends on a patch (0009, above).
 
 ## Install
 

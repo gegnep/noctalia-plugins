@@ -47,6 +47,13 @@ local expandedWsId = nil
 -- Window tile currently under the pointer (per-window hoverWin callbacks,
 -- 0008 patch) — drives the grey hover dot. nil when no tile is hovered.
 local hoveredWindowId = nil
+-- Workspace chip currently under the pointer (per-chip hoverChip callback,
+-- needs the row/label onClick/onHover host patch — see chipFill/chipBorder
+-- below) — drives the chip's hover fill/label swap. NOT the same signal as
+-- expandedWsId: that stays set through the whole collapse grace period
+-- after the pointer has genuinely left the group, so it can't double as
+-- "pointer is on the chip right now." nil when no chip is hovered.
+local hoveredWorkspaceChipId = nil
 
 local workspacesById = {}
 local windowsById = {}
@@ -512,14 +519,20 @@ local function registerWorkspaceCallback(workspace)
   local wsName = "focusWs_" .. workspace.id
   registeredWorkspaceCallbacks[workspace.id] = wsName
 
-  -- Per-chip hover (0008 host patch): chip AND its window tiles share one
-  -- callback name, so mousing from chip to tile keeps the group alive. The
-  -- arg arrives as the string "true"/"false" (toggle onChange convention).
-  -- First event latches perChipHover — on an unpatched host the prop is
-  -- ignored and the widget-level expand-all fallback keeps working.
-  env["hoverWs_" .. workspace.id] = function(state)
+  -- Chip hover: the chip's OWN callback (needs the row/label onClick/
+  -- onHover host patch, 0009). This name used to be shared with window
+  -- tiles ("mousing chip to tile keeps the group alive") back when tiles
+  -- had no hover callback of their own; tiles now register their own
+  -- hoverWin_<id> (registerWindowCallback below) with an equivalent
+  -- group-keep-alive copy, so this name is chip-exclusive. The arg arrives
+  -- as the string "true"/"false" (toggle onChange convention). First event
+  -- latches perChipHover — on a host with only the 0008 (button/box/image)
+  -- patch but not 0009, this prop is ignored entirely (chip has no onHover
+  -- to latch from) and the widget-level expand-all fallback keeps working.
+  env["hoverChip_" .. workspace.id] = function(state)
     perChipHover = true
     if state == "true" then
+      hoveredWorkspaceChipId = workspace.id
       -- Chip-to-chip SWITCH: snap the old row shut in the SAME render as
       -- the new one appears. Letting the old row fade out (~195ms) while
       -- the new one is already open produced two staggered width jumps per
@@ -542,8 +555,12 @@ local function registerWorkspaceCallback(workspace)
       graceMs = 0
       render()
     else
+      if hoveredWorkspaceChipId == workspace.id then
+        hoveredWorkspaceChipId = nil
+      end
       collapsePending = true
       graceMs = 0
+      render() -- needed now so the hover fill/label swap clears the instant the pointer leaves, not on the next unrelated render
     end
   end
 
@@ -607,8 +624,11 @@ pruneCallbackEnv = function()
   for id, name in pairs(registeredWorkspaceCallbacks) do
     if workspacesById[id] == nil then
       env[name] = nil
-      env["hoverWs_" .. id] = nil
+      env["hoverChip_" .. id] = nil
       registeredWorkspaceCallbacks[id] = nil
+      if hoveredWorkspaceChipId == id then
+        hoveredWorkspaceChipId = nil
+      end
     end
   end
 
@@ -952,22 +972,69 @@ local function windowInitial(appId)
 end
 
 -- Native workspaces_widget fill roles (workspaces_widget.cpp:883-899): active
--- -> primary, urgent -> error, occupied -> secondary, empty -> muted. Button
--- is the only clickable+labeled control the reconciler exposes (box is a
--- leaf with no children — ui_tree_reconciler.cpp:195-197 drops children on
--- any non-flex/non-scroll control, kBox has no text-related prop at all), so
--- role fill/label-color combos are approximated via ButtonVariant, whose
--- built-in palettes (button.cpp:32-176) already resolve to the matching
--- on_* label color per state.
-local function chipVariant(workspace, occupied)
+-- -> primary, urgent -> error, occupied -> secondary, empty -> muted. The
+-- chip used to approximate these via ButtonVariant (button.cpp:32-176)
+-- because ui.button was the only clickable+labeled leaf the reconciler
+-- exposed (box is a leaf with no children — ui_tree_reconciler.cpp:195-197
+-- drops children on any non-flex/non-scroll control). Now that ui.row/
+-- ui.label carry onClick/onHover (the clickable-containers host patch,
+-- 0009), the chip renders each role's fill/label-color pair DIRECTLY — more
+-- faithful to the native widget than a borrowed button preset ever was, and
+-- one less indirection to keep in sync with button.cpp's palettes.
+-- Precedence matches the native widget and the old chipVariant: urgent
+-- beats active beats occupied beats empty. hover slots in AFTER
+-- urgent/active (an urgent or active chip keeps its own strong cue on
+-- hover — see buildWorkspaceGroup) but BEFORE occupied/empty, since hover
+-- is the more specific state.
+local function chipFill(workspace, occupied, hovered)
   if workspace.isUrgent then
-    return "destructive" -- fill=error, label=on_error
+    return "error"
   elseif workspace.isActive then
-    return "primary" -- fill=primary, label=on_primary
+    return "primary"
+  elseif hovered then
+    -- "hover"/"on_hover" are dedicated palette roles (palette.h) — every
+    -- native ButtonVariant already swaps to this exact pair on hover
+    -- (button.cpp: `.hover = makeState(colorSpecFromRole(ColorRole::Hover),
+    -- clearColorSpec(), colorSpecFromRole(ColorRole::OnHover))` verbatim in
+    -- every single variant), so this is the correct token, not a
+    -- fabricated alpha-bump.
+    return "hover"
   elseif occupied then
-    return "secondary" -- fill=secondary, label=on_secondary
+    return "secondary"
   end
-  return "default" -- fill=surface_variant, label=on_surface (closest empty preset)
+  return "surface_variant"
+end
+
+local function chipLabelColor(workspace, occupied, hovered)
+  if workspace.isUrgent then
+    return "on_error"
+  elseif workspace.isActive then
+    return "on_primary"
+  elseif hovered then
+    return "on_hover"
+  elseif occupied then
+    return "on_secondary"
+  end
+  return "on_surface"
+end
+
+-- Empty (non-urgent/active/hovered/occupied) chips get a thin outline for
+-- legibility against the mostly-transparent idle pill — the one border case
+-- the old Default ButtonVariant preset kept (button.cpp:35-41, border=
+-- Outline, borderWidth=Style::borderWidth). Every other state is
+-- border-free: hover ALWAYS clears the border in every native variant
+-- (button.cpp, every `.hover` entry has `clearColorSpec()` for border), and
+-- primary/secondary/error chips already have enough fill contrast without
+-- one. borderWidth itself is a CONSTANT 1 in every state (footgun #1 — set
+-- it explicitly always, never rely on a flex node's "absent borderWidth
+-- defaults to 1.0" fallback, which only applies when the prop is missing
+-- entirely, not when the border color's alpha is 0) — only the border
+-- color's alpha suffix toggles the outline on/off.
+local function chipBorder(workspace, occupied, hovered)
+  if workspace.isUrgent or workspace.isActive or hovered or occupied then
+    return "outline/0"
+  end
+  return "outline"
 end
 
 -- Numeric workspace labels (index-based) are never truncated, matching the
@@ -1142,9 +1209,16 @@ local function buildWindowTile(window, titlesMode)
   local content
 
   if iconPath == nil then
-    -- No icon resolved: letter-tile fallback. variant is ALWAYS "ghost" now
-    -- (the focused cue moved to the dot below). Title shows via a text swap
-    -- (no structure change, so no recreation on hover).
+    -- No icon resolved: letter-tile fallback. Stays ui.button — unlike the
+    -- workspace chip, this one is NOT migrated to ui.row/ui.label, because
+    -- kButton has no radius/paddingH/paddingV prop at all (ui_tree_
+    -- reconciler.cpp's kButton set) and never will via 0007 (rejected,
+    -- dropped). Accepted: it degrades to plain host button chrome (square,
+    -- default padding) — this is already the rare no-icon fallback, and
+    -- unlike the chip it keeps onClick/onHover unconditionally (kButton has
+    -- always had both), so it never goes inert, only less pretty. variant
+    -- is ALWAYS "ghost" now (the focused cue moved to the dot below). Title
+    -- shows via a text swap (no structure change, so no recreation on hover).
     content = ui.button({
       key = "win-" .. window.id .. "-fallback",
       text = windowTileText(window, showTitle),
@@ -1152,9 +1226,6 @@ local function buildWindowTile(window, titlesMode)
       variant = "ghost",
       selected = false,
       height = 22,
-      radius = 8,
-      paddingH = 5,
-      paddingV = 2,
       onClick = onClick,
       onHover = onHoverName,
     })
@@ -1229,14 +1300,26 @@ local function buildWorkspaceGroup(workspace, windows, occupied, titlesMode, win
   local anim = ensureRowAnim(workspace.id)
   anim.target = rowOpen and 1 or 0
 
-  -- Chip: variant/selected/onClick always explicitly set (footgun #1 —
-  -- absent props never clear on a retained node). Width is ALWAYS computed
-  -- (perfect-circle for 1-char labels, capsule beyond that) — geometry now
-  -- comes entirely from width, not paddingH.
-  -- radius/width need the 0007 host patch, onHover the 0008 patch; an
-  -- unpatched reconciler logs "has no prop, ignored" and degrades to the
-  -- square look / widget-level expand-all.
-  local hoverName = "hoverWs_" .. workspace.id
+  -- Chip: ui.row + ui.label (migrated off ui.button — 0007 button radius/
+  -- padding was rejected and dropped, but ui.row has ALWAYS supported
+  -- width/height/radius/fill/border/align/justify natively, so the chip's
+  -- geometry needs no patch at all now). fill/border/borderWidth/onClick/
+  -- onHover are always explicitly set (footgun #1 — absent props never
+  -- clear on a retained node). Width is ALWAYS computed (perfect-circle for
+  -- 1-char labels, capsule beyond that) — geometry comes entirely from
+  -- width, not padding.
+  -- onClick/onHover need the row/label clickable-containers host patch
+  -- (0009, not yet upstreamed): unlike the old button chip, which degraded
+  -- gracefully to a square-but-clickable shape without 0007, an unpatched
+  -- reconciler here logs "has no prop, ignored" for onClick/onHover and the
+  -- chip becomes INERT — it still renders styled and correctly shaped
+  -- (radius/fill/border need no patch), but clicking or hovering it does
+  -- nothing. That's a real regression versus the old degraded mode, traded
+  -- for a chip that finally matches the native widget's fill roles exactly;
+  -- widget-level onHover (expand-all fallback) is unaffected since it lives
+  -- on the top-level capsule, not the chip.
+  local hoverName = "hoverChip_" .. workspace.id
+  local chipHovered = hoveredWorkspaceChipId == workspace.id
   local chipTextValue = chipText(workspace, occupied, windowCount)
   local chipHeightValue = chipHeight(rowOpen)
   -- A squashed idle chip (high chip_ratio) can't fit its 11px label —
@@ -1246,26 +1329,46 @@ local function buildWorkspaceGroup(workspace, windows, occupied, titlesMode, win
   if chipHeightValue < 10 then
     chipTextValue = " "
   end
-  local chip = ui.button({
+  -- height beats a control's 32px minHeight floor (style.h controlHeightSm
+  -- — irrelevant to a row, kept for context vs. the old button chip);
+  -- radius = height/2 + align=justify=center makes a true circle/oval for a
+  -- 1-char label, capsule beyond that. settingChipSize (default 16) matches
+  -- Style::baseGlyphSize, the actual height basis the bar's content slot
+  -- clamps to — a hardcoded 22 rendered as an oval. width/height/radius are
+  -- ALWAYS explicitly set (footgun #1) even though the shape can change
+  -- between renders on this same retained keyed row (oval collapsed <->
+  -- circle expanded).
+  local chipWidthValue = chipWidth(chipTextValue, rowOpen)
+  local chip = ui.row({
     key = "ws-" .. workspace.id,
-    text = chipTextValue,
-    fontSize = 11,
-    variant = chipVariant(workspace, occupied),
-    selected = false,
-    -- height beats Button's 32px minHeight floor (style.h controlHeightSm);
-    -- radius = height/2 + contentAlign=center makes a true circle/oval for a
-    -- 1-char label, capsule beyond that. settingChipSize (default 16)
-    -- matches Style::baseGlyphSize, the actual height basis the bar's
-    -- content slot clamps to — a hardcoded 22 rendered as an oval. width/
-    -- height/radius are ALWAYS explicitly set (footgun #1) even though the
-    -- shape can change between renders on this same retained keyed button
-    -- (oval collapsed <-> circle expanded).
+    width = chipWidthValue,
     height = chipHeightValue,
-    width = chipWidth(chipTextValue, rowOpen),
     radius = chipHeightValue / 2,
-    contentAlign = "center",
+    fill = chipFill(workspace, occupied, chipHovered),
+    border = chipBorder(workspace, occupied, chipHovered),
+    borderWidth = 1,
+    align = "center",
+    justify = "center",
     onClick = registerWorkspaceCallback(workspace),
     onHover = hoverName,
+  }, {
+    -- Label child is ALWAYS mounted (footgun #1/#3 — no structure change on
+    -- any state change, including the chipHeightValue < 10 suppressed-label
+    -- case above: only chipTextValue swaps, never the tree shape).
+    -- Accepted regressions vs. the old Button chip: no pressed-state flash
+    -- and no animated hover color transition (Button::applyColors eases
+    -- toward the target color; a row's fill just snaps) — hover here is an
+    -- instant swap, not a tween.
+    ui.label({
+      key = "ws-" .. workspace.id .. "-label",
+      text = chipTextValue,
+      fontSize = 11,
+      color = chipLabelColor(workspace, occupied, chipHovered),
+      -- The old Button chip ellipsized overflowing text via its internal
+      -- label max-width; a bare label has no such net, and chipWidth's
+      -- 6px/char estimate can undershoot wide glyphs. 2px inset per side.
+      maxWidth = math.max(chipWidthValue - 4, 4),
+    }),
   })
 
   -- Same symmetric indicator column as window tiles (spacer/content/dot) so

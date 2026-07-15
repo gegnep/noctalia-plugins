@@ -3,7 +3,10 @@
 -- ticks, a full open fade settling at opacity 1 + interval 250, a close
 -- fade reaching opacity 0 + visible=false, a mid-fade reversal staying
 -- within [0,1] with no restart pop, dot fill per focus state, and chip
--- width for a 1-char vs 3-char label.
+-- width for a 1-char vs 3-char label. Also covers the ui.row/ui.label chip
+-- (structure, fill/border/label-color per state, the outline hairline on
+-- empty chips only) and the hoverChip_<id> callback (group open/grace
+-- behavior + the hoveredWorkspaceChipId-driven hover fill/label swap).
 --
 -- currentIntervalMs/graceMs/resyncMs/rowAnim/COLLAPSE_GRACE_MS/RESYNC_MS/
 -- FADE_TAU_MS are plugin locals, visible here because dry-run.sh
@@ -61,7 +64,103 @@ assert(chip1ByIdx.props.width == 22, "1-char label idle oval chip width mismatch
 assert(chip1ByIdx.props.height == 11, "1-char label idle oval chip height mismatch, got " .. tostring(chip1ByIdx.props.height))
 assert(chip1ByIdx.props.radius == 5.5, "1-char label idle oval chip radius mismatch, got " .. tostring(chip1ByIdx.props.radius))
 assert(chip1ByIdx.props.paddingH == nil, "chipPaddingH geometry should be gone")
-assert(chip1ByIdx.props.contentAlign == "center", "chip should center its text now that width owns geometry")
+assert(chip1ByIdx.type == "row", "chip should be a ui.row now that it's migrated off ui.button")
+assert(chip1ByIdx.props.align == "center" and chip1ByIdx.props.justify == "center",
+  "chip should center its label via align/justify now that width owns geometry")
+assert(chip1ByIdx.props.onClick == "focusWs_1", "chip onClick missing/wrong")
+assert(chip1ByIdx.props.onHover == "hoverChip_1", "chip onHover should be its own hoverChip_<id>, got " .. tostring(chip1ByIdx.props.onHover))
+assert(chip1ByIdx.props.borderWidth == 1, "chip borderWidth should always be the constant 1")
+-- Occupied (window 100), not active/urgent/hovered -> secondary fill/label,
+-- and no outline (only the fully-empty state gets one).
+assert(chip1ByIdx.props.fill == "secondary", "occupied chip should fill secondary, got " .. tostring(chip1ByIdx.props.fill))
+assert(chip1ByIdx.props.border == "outline/0", "occupied chip should have no border, got " .. tostring(chip1ByIdx.props.border))
+local chip1Label = findNode(chip1ByIdx, "ws-1-label")
+assert(chip1Label ~= nil and chip1Label.type == "label", "chip label child missing")
+assert(chip1Label.props.text == "1", "chip label text mismatch, got " .. tostring(chip1Label.props.text))
+assert(chip1Label.props.color == "on_secondary", "occupied chip label should be on_secondary, got " .. tostring(chip1Label.props.color))
+assert(chip1Label.props.fontSize == 11, "chip label fontSize mismatch")
+
+-- ---- fixture (k): empty (unoccupied) chip gets the outline hairline,
+-- active/urgent/hovered chips never do -------------------------------------
+windowsById = {} -- workspace 1 now unoccupied
+workspacesById[1].isActive = false
+HARNESS_RENDERS = {}
+render()
+local chip1Empty = findNode(lastTree(), "ws-1")
+assert(chip1Empty.props.fill == "surface_variant", "empty chip should fill surface_variant, got " .. tostring(chip1Empty.props.fill))
+assert(chip1Empty.props.border == "outline", "empty chip should carry the outline hairline, got " .. tostring(chip1Empty.props.border))
+local chip1EmptyLabel = findNode(chip1Empty, "ws-1-label")
+assert(chip1EmptyLabel.props.color == "on_surface", "empty chip label should be on_surface, got " .. tostring(chip1EmptyLabel.props.color))
+
+workspacesById[1].isActive = true
+HARNESS_RENDERS = {}
+render()
+local chip1Active = findNode(lastTree(), "ws-1")
+assert(chip1Active.props.fill == "primary", "active chip should fill primary, got " .. tostring(chip1Active.props.fill))
+assert(chip1Active.props.border == "outline/0", "active chip should never show the outline, got " .. tostring(chip1Active.props.border))
+local chip1ActiveLabel = findNode(chip1Active, "ws-1-label")
+assert(chip1ActiveLabel.props.color == "on_primary", "active chip label should be on_primary, got " .. tostring(chip1ActiveLabel.props.color))
+
+workspacesById[1].isUrgent = true
+HARNESS_RENDERS = {}
+render()
+local chip1Urgent = findNode(lastTree(), "ws-1")
+assert(chip1Urgent.props.fill == "error", "urgent should win over active for chip fill, got " .. tostring(chip1Urgent.props.fill))
+local chip1UrgentLabel = findNode(chip1Urgent, "ws-1-label")
+assert(chip1UrgentLabel.props.color == "on_error", "urgent chip label should be on_error, got " .. tostring(chip1UrgentLabel.props.color))
+workspacesById[1].isUrgent = false
+workspacesById[1].isActive = false
+
+-- ---- fixture (l): chip hover cue — hoverChip_<id> latches
+-- hoveredWorkspaceChipId, swaps a non-active/non-urgent chip to the
+-- "hover"/"on_hover" role pair, and still drives the group open/grace
+-- behavior the old shared hoverWs handler did ------------------------------
+assert(type(env.hoverChip_1) == "function", "hoverChip_1 callback missing")
+perChipHover = false
+expandedWsId = nil
+collapsePending = false
+graceMs = 0
+hoveredWorkspaceChipId = nil
+
+env.hoverChip_1("true")
+assert(hoveredWorkspaceChipId == 1, "hoverChip true should latch hoveredWorkspaceChipId")
+assert(perChipHover == true, "hoverChip should latch perChipHover like the old hoverWs handler")
+assert(expandedWsId == 1, "hoverChip true should open this workspace's group like the old hoverWs handler")
+assert(collapsePending == false, "hoverChip true should cancel any pending collapse")
+local chip1Hovered = findNode(lastTree(), "ws-1")
+assert(chip1Hovered.props.fill == "hover", "hovered unoccupied/non-active chip should swap to the hover role fill, got " .. tostring(chip1Hovered.props.fill))
+local chip1HoveredLabel = findNode(chip1Hovered, "ws-1-label")
+assert(chip1HoveredLabel.props.color == "on_hover", "hovered chip label should swap to on_hover, got " .. tostring(chip1HoveredLabel.props.color))
+
+env.hoverChip_1("false")
+assert(hoveredWorkspaceChipId == nil, "hoverChip false should clear hoveredWorkspaceChipId")
+assert(collapsePending == true, "hoverChip false should arm the same grace countdown the old hoverWs handler did")
+local chip1Unhovered = findNode(lastTree(), "ws-1")
+assert(chip1Unhovered.props.fill == "surface_variant", "chip fill should revert once hover clears, got " .. tostring(chip1Unhovered.props.fill))
+collapsePending = false
+graceMs = 0
+
+-- Active chip: hover must NOT change its fill (already primary, urgency-
+-- style cue wins over the hover swap).
+workspacesById[1].isActive = true
+HARNESS_RENDERS = {}
+render()
+env.hoverChip_1("true")
+local chip1ActiveHovered = findNode(lastTree(), "ws-1")
+assert(chip1ActiveHovered.props.fill == "primary", "hovering an active chip must not change its fill, got " .. tostring(chip1ActiveHovered.props.fill))
+env.hoverChip_1("false")
+workspacesById[1].isActive = false
+collapsePending = false
+graceMs = 0
+hoveredWorkspaceChipId = nil
+expandedWsId = nil
+perChipHover = false
+
+-- Restore window 100 (cleared for the fixture (k) empty-chip checks above) —
+-- everything from here down through fixture (e) assumes it's present.
+windowsById = {
+  [100] = { id = 100, title = "Term", appId = "firefox", workspaceId = 1, isFocused = true },
+}
 
 -- Expanded (rowOpen true): oval snaps to the full circle regardless of style.
 expanded = true
@@ -90,7 +189,8 @@ render()
 local chip1Line = findNode(lastTree(), "ws-1")
 assert(chip1Line.props.width == 64, "ratio 400 idle width mismatch, got " .. tostring(chip1Line.props.width))
 assert(chip1Line.props.height == 4, "ratio 400 idle height mismatch, got " .. tostring(chip1Line.props.height))
-assert(chip1Line.props.text == " ", "label should be suppressed when the idle chip is too flat, got " .. tostring(chip1Line.props.text))
+local chip1LineLabel = findNode(chip1Line, "ws-1-label")
+assert(chip1LineLabel.props.text == " ", "label should be suppressed when the idle chip is too flat, got " .. tostring(chip1LineLabel.props.text))
 
 -- display "windows": label is the workspace's TRUE window count. The count
 -- (2) deliberately differs from the idx (1) so an idx fallback fails loudly
@@ -104,7 +204,8 @@ assert(settingDisplay == "windows", "readSettings must accept display=windows, g
 HARNESS_RENDERS = {}
 render()
 local chip1Count = findNode(lastTree(), "ws-1")
-assert(chip1Count.props.text == "2", "display=windows should label the chip with its window count, got " .. tostring(chip1Count.props.text))
+local chip1CountLabel = findNode(chip1Count, "ws-1-label")
+assert(chip1CountLabel.props.text == "2", "display=windows should label the chip with its window count, got " .. tostring(chip1CountLabel.props.text))
 windowsById[101] = nil
 HARNESS_CONFIG = {}
 settingDisplay = "id"
@@ -163,12 +264,12 @@ currentIntervalMs = 250
 HARNESS_INTERVAL_MS = nil
 HARNESS_INTERVAL_CALLS = {}
 
-assert(type(env.hoverWs_1) == "function", "hoverWs_1 callback missing")
+assert(type(env.hoverChip_1) == "function", "hoverChip_1 callback missing")
 
 -- Open: the hover callback itself renders, which should set the row's
 -- target to 1 and — since opacity (0) now disagrees with target — drop the
 -- interval to 16ms THIS render, not one update() tick later.
-env.hoverWs_1("true")
+env.hoverChip_1("true")
 assert(rowAnim[1] ~= nil and rowAnim[1].target == 1, "open should set target 1")
 assert(rowAnim[1].opacity == 0, "opacity should not jump on the render that flips target")
 assert(currentIntervalMs == 16, "interval should drop to 16ms the same render a target flips")
@@ -205,7 +306,7 @@ assert(groupOpen.props.border == "primary/0.35" and groupOpen.props.borderWidth 
 -- ---- fixture (a): grace accumulator fires at exactly COLLAPSE_GRACE_MS,
 -- driven purely by 250ms ticks (idle -> no animation in flight) ----------
 
-env.hoverWs_1("false")
+env.hoverChip_1("false")
 assert(collapsePending == true, "leaving should arm the collapse countdown")
 assert(graceMs == 0, "leaving should reset the grace accumulator")
 
@@ -251,7 +352,7 @@ assert(groupClosed.props.fill == "surface_variant/0.00", "closed pill fill shoul
 
 -- ---- fixture (d): reversal mid-fade never leaves [0,1], no restart pop -
 
-env.hoverWs_1("true") -- re-open: renders, target -> 1, opacity starts at 0 again
+env.hoverChip_1("true") -- re-open: renders, target -> 1, opacity starts at 0 again
 assert(rowAnim[1].target == 1 and rowAnim[1].opacity == 0)
 
 update() -- one 16ms step partway open
@@ -281,7 +382,7 @@ local afterOneCloseStep = rowAnim[1].opacity
 assert(afterOneCloseStep >= 0 and afterOneCloseStep <= 1, "opacity left [0,1] mid close step")
 assert(afterOneCloseStep < midOpacity, "one close step should have reduced opacity")
 
-env.hoverWs_1("true")
+env.hoverChip_1("true")
 assert(rowAnim[1].target == 1, "re-opening mid-close should flip target back to 1")
 assert(rowAnim[1].opacity == afterOneCloseStep, "re-opening must resume from the current opacity, not restart from 0")
 
@@ -335,12 +436,12 @@ assert(resyncMs == 0, "resync accumulator should reset once it fires")
 -- ---- switch handoff: hovering B while A is open snaps A shut in the same
 -- render (one width jump per switch, not two staggered ones) --------------
 workspacesById[2] = { id = 2, idx = 2, name = nil, output = "DP-3", isActive = false, isFocused = false, isUrgent = false }
-render() -- registers hoverWs_2 for the new workspace
+render() -- registers hoverChip_2 for the new workspace
 perChipHover = true
 expandedWsId = 1
 rowAnim[1] = { opacity = 1, target = 1 }
 rowAnim[2] = { opacity = 0, target = 0 }
-env["hoverWs_2"]("true")
+env["hoverChip_2"]("true")
 assert(expandedWsId == 2, "switch should move expansion to workspace 2")
 assert(rowAnim[1].opacity == 0 and rowAnim[1].target == 0, "old row must snap fully closed on switch, got opacity=" .. tostring(rowAnim[1].opacity))
 local oldRow = findNode(lastTree(), "wins-1")
