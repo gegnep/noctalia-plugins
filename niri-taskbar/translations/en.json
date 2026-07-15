@@ -1,0 +1,84 @@
+{
+  "settings": {
+    "focused_output_only": {
+      "label": "Focused monitor only",
+      "description": "Show only the focused monitor's workspaces instead of this monitor's."
+    },
+    "show_empty_workspaces": {
+      "label": "Show empty workspaces",
+      "description": "Show chips for workspaces with no windows. The active workspace is always shown."
+    },
+    "display": {
+      "label": "Workspace label",
+      "description": "What each chip shows: the workspace index, its name (falls back to the index), its window count, or a bare pill.",
+      "options": {
+        "id": "Id",
+        "name": "Name",
+        "windows": "Window count",
+        "none": "None"
+      }
+    },
+    "window_titles": {
+      "label": "Window titles",
+      "description": "Show a truncated window title next to window tiles: never, only on the hovered tile, or always. Forced off in a vertical (side) bar.",
+      "options": {
+        "off": "Off",
+        "hover": "On hover",
+        "always": "Always"
+      }
+    },
+    "max_windows_per_workspace": {
+      "label": "Max windows per workspace",
+      "description": "Cap on expanded window tiles per workspace before collapsing the rest into a +N label."
+    },
+    "labels_only_when_occupied": {
+      "label": "Labels only when occupied",
+      "description": "Hide the label on empty, inactive workspace chips, leaving a bare pill."
+    },
+    "max_label_chars": {
+      "label": "Max label characters",
+      "description": "Truncate workspace name labels to this many characters. Purely numeric labels are never truncated."
+    },
+    "only_active_workspace": {
+      "label": "Only active workspace windows",
+      "description": "Show window tiles only for each monitor's active workspace. Other workspace chips still render."
+    },
+    "icon_size": {
+      "label": "Icon size",
+      "description": "Window app icon size in pixels."
+    },
+    "chip_size": {
+      "label": "Chip size",
+      "description": "Workspace chip diameter."
+    },
+    "chip_ratio": {
+      "label": "Idle chip stretch (%)",
+      "description": "Idle chip width-to-height ratio: 100 is a circle, 140 a compact oval, 300+ approaches a line. Chips always round into circles on expand."
+    },
+    "chip_spacing": {
+      "label": "Chip spacing",
+      "description": "Spacing between workspaces."
+    },
+    "collapse_delay_ms": {
+      "label": "Collapse delay",
+      "description": "Hover linger before collapse, in milliseconds."
+    },
+    "expand_speed": {
+      "label": "Expand speed",
+      "description": "Expand animation speed.",
+      "options": {
+        "fast": "Fast",
+        "normal": "Normal",
+        "slow": "Slow"
+      }
+    },
+    "show_focus_dot": {
+      "label": "Show focus dot",
+      "description": "Show a dot under the focused window's tile."
+    },
+    "pill_tint": {
+      "label": "Pill tint",
+      "description": "Expanded pill tint strength (%)."
+    }
+  }
+}

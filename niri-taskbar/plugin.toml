@@ -16,47 +16,47 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "focused_output_only"
   type = "bool"
-  label = "Focused monitor only"
-  description = "Show only the focused monitor's workspaces instead of this monitor's."
+  label_key = "settings.focused_output_only.label"
+  description_key = "settings.focused_output_only.description"
   default = false
 
   [[widget.setting]]
   key = "show_empty_workspaces"
   type = "bool"
-  label = "Show empty workspaces"
-  description = "Show chips for workspaces with no windows. The active workspace is always shown."
+  label_key = "settings.show_empty_workspaces.label"
+  description_key = "settings.show_empty_workspaces.description"
   default = true
 
   [[widget.setting]]
   key = "display"
   type = "select"
-  label = "Workspace label"
-  description = "What each chip shows: the workspace index, its name (falls back to the index), its window count, or a bare pill."
+  label_key = "settings.display.label"
+  description_key = "settings.display.description"
   default = "id"
   options = [
-    { value = "id", label = "Id" },
-    { value = "name", label = "Name" },
-    { value = "windows", label = "Window count" },
-    { value = "none", label = "None" },
+    { value = "id", label_key = "settings.display.options.id" },
+    { value = "name", label_key = "settings.display.options.name" },
+    { value = "windows", label_key = "settings.display.options.windows" },
+    { value = "none", label_key = "settings.display.options.none" },
   ]
 
   [[widget.setting]]
   key = "window_titles"
   type = "select"
-  label = "Window titles"
-  description = "Show a truncated window title next to window tiles: never, only on the hovered tile, or always. Forced off in a vertical (side) bar."
+  label_key = "settings.window_titles.label"
+  description_key = "settings.window_titles.description"
   default = "off"
   options = [
-    { value = "off", label = "Off" },
-    { value = "hover", label = "On hover" },
-    { value = "always", label = "Always" },
+    { value = "off", label_key = "settings.window_titles.options.off" },
+    { value = "hover", label_key = "settings.window_titles.options.hover" },
+    { value = "always", label_key = "settings.window_titles.options.always" },
   ]
 
   [[widget.setting]]
   key = "max_windows_per_workspace"
   type = "int"
-  label = "Max windows per workspace"
-  description = "Cap on expanded window tiles per workspace before collapsing the rest into a +N label."
+  label_key = "settings.max_windows_per_workspace.label"
+  description_key = "settings.max_windows_per_workspace.description"
   default = 10
   min = 1
   max = 30
@@ -65,15 +65,15 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "labels_only_when_occupied"
   type = "bool"
-  label = "Labels only when occupied"
-  description = "Hide the label on empty, inactive workspace chips, leaving a bare pill."
+  label_key = "settings.labels_only_when_occupied.label"
+  description_key = "settings.labels_only_when_occupied.description"
   default = false
 
   [[widget.setting]]
   key = "max_label_chars"
   type = "int"
-  label = "Max label characters"
-  description = "Truncate workspace name labels to this many characters. Purely numeric labels are never truncated."
+  label_key = "settings.max_label_chars.label"
+  description_key = "settings.max_label_chars.description"
   default = 1
   min = 1
   max = 20
@@ -82,15 +82,15 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "only_active_workspace"
   type = "bool"
-  label = "Only active workspace windows"
-  description = "Show window tiles only for each monitor's active workspace. Other workspace chips still render."
+  label_key = "settings.only_active_workspace.label"
+  description_key = "settings.only_active_workspace.description"
   default = false
 
   [[widget.setting]]
   key = "icon_size"
   type = "int"
-  label = "Icon size"
-  description = "Window app icon size in pixels."
+  label_key = "settings.icon_size.label"
+  description_key = "settings.icon_size.description"
   default = 16
   min = 12
   max = 32
@@ -99,8 +99,8 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "chip_size"
   type = "int"
-  label = "Chip size"
-  description = "Workspace chip diameter."
+  label_key = "settings.chip_size.label"
+  description_key = "settings.chip_size.description"
   default = 16
   min = 12
   max = 24
@@ -109,8 +109,8 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "chip_ratio"
   type = "int"
-  label = "Idle chip stretch (%)"
-  description = "Idle chip width-to-height ratio: 100 is a circle, 140 a compact oval, 300+ approaches a line. Chips always round into circles on expand."
+  label_key = "settings.chip_ratio.label"
+  description_key = "settings.chip_ratio.description"
   default = 140
   min = 100
   max = 400
@@ -119,8 +119,8 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "chip_spacing"
   type = "int"
-  label = "Chip spacing"
-  description = "Spacing between workspaces."
+  label_key = "settings.chip_spacing.label"
+  description_key = "settings.chip_spacing.description"
   default = 3
   min = 0
   max = 12
@@ -129,8 +129,8 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "collapse_delay_ms"
   type = "int"
-  label = "Collapse delay"
-  description = "Hover linger before collapse, in milliseconds."
+  label_key = "settings.collapse_delay_ms.label"
+  description_key = "settings.collapse_delay_ms.description"
   default = 1250
   min = 250
   max = 5000
@@ -139,27 +139,27 @@ entry = "taskbar.luau"
   [[widget.setting]]
   key = "expand_speed"
   type = "select"
-  label = "Expand speed"
-  description = "Expand animation speed."
+  label_key = "settings.expand_speed.label"
+  description_key = "settings.expand_speed.description"
   default = "normal"
   options = [
-    { value = "fast", label = "Fast" },
-    { value = "normal", label = "Normal" },
-    { value = "slow", label = "Slow" },
+    { value = "fast", label_key = "settings.expand_speed.options.fast" },
+    { value = "normal", label_key = "settings.expand_speed.options.normal" },
+    { value = "slow", label_key = "settings.expand_speed.options.slow" },
   ]
 
   [[widget.setting]]
   key = "show_focus_dot"
   type = "bool"
-  label = "Show focus dot"
-  description = "Show a dot under the focused window's tile."
+  label_key = "settings.show_focus_dot.label"
+  description_key = "settings.show_focus_dot.description"
   default = true
 
   [[widget.setting]]
   key = "pill_tint"
   type = "int"
-  label = "Pill tint"
-  description = "Expanded pill tint strength (%)."
+  label_key = "settings.pill_tint.label"
+  description_key = "settings.pill_tint.description"
   default = 30
   min = 0
   max = 60

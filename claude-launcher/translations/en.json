@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "claude_command": {
+      "label": "Claude command",
+      "description": "Path or name of the claude binary (point at a wrapper to sandbox it)"
+    },
+    "transcripts_dir": {
+      "label": "Transcripts directory",
+      "description": "Claude projects dir used to reload past conversations; empty auto-derives from the workspace path (sandboxed claude wrappers must set this explicitly)"
+    },
+    "model": {
+      "label": "Default model",
+      "description": "Model new chats start with; custom aliases from the Models list are pickable per-chat but only via 'First in list' here",
+      "options": {
+        "auto": "First in list",
+        "sonnet": "Sonnet",
+        "opus": "Opus",
+        "haiku": "Haiku",
+        "fable": "Fable"
+      }
+    },
+    "models": {
+      "label": "Models",
+      "description": "Model aliases offered by the in-panel switcher"
+    },
+    "effort": {
+      "label": "Effort",
+      "description": "Default reasoning level for new chats",
+      "options": {
+        "auto": "Default (High)",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "X-High",
+        "max": "Max"
+      }
+    },
+    "allow_tools": {
+      "label": "Allow tools",
+      "description": "Off (default): claude runs with all tools disabled. On: claude's default tool behavior."
+    }
+  }
+}
