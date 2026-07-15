@@ -1,4 +1,4 @@
-From 7f205974bbd480da2cb960e8e3f9e08fff5d4323 Mon Sep 17 00:00:00 2001
+From bf34485a859824353068cd32279690f9bfc15eb2 Mon Sep 17 00:00:00 2001
 From: gegnep <96670443+gegnep@users.noreply.github.com>
 Date: Wed, 15 Jul 2026 17:25:48 -0400
 Subject: [PATCH] feat(plugins): expose onClick and onHover on row and column
@@ -19,29 +19,30 @@ self-sizes, and the explicit size mirroring box/image rely on cannot
 work for a content-sized flex.
 
 Clickable wrappers also gain keyboard activation to keep parity with
-Button: focusable, and the Validate keybind fires onClick. This
-applies to clickable box/image as well (strictly additive). No focus
-ring is drawn on containers.
+Button: focusable, and the Validate keybind fires onClick. The same
+activation applies to existing clickable box/image wrappers, which now
+use ClickWrap and enter the tab order. No visual focus state is drawn
+or exposed for containers yet.
 
-An empty callback name now counts as unset for all wrapped types:
-wiring is change-detected against the slot's empty-string default, so
-it could never fire — wrapping anyway produced an InputArea that
-swallowed ancestor clicks/hover without ever calling anything.
+Wrapper input handlers deviate from the reconciler's
+retain-absent-props default: an empty callback name counts as unset,
+and removing onClick/onHover while the other callback keeps the
+wrapper alive clears the stale handler, button mask, and focusability
+— a retained one would leave an invisible node that swallows clicks
+and sits in tab order as a keyboard-activatable ghost.
 
-Semantics match existing box/image clickables: removing a callback
-prop from a retained node does not clear the old handler (absent
-props never clear), and container onHover only fires while the
-container itself is the innermost hovered input area — interactive
-descendants receive enter/leave instead.
+Container onHover fires only while the container itself is the
+innermost hovered input area — interactive descendants receive
+enter/leave instead, matching existing dispatcher behavior.
 
 Assisted with AI tooling.
 ---
- src/ui/ui_tree_reconciler.cpp     | 147 +++++++++++++++++----
- tests/ui_tree_reconciler_test.cpp | 213 ++++++++++++++++++++++++++++++
- 2 files changed, 331 insertions(+), 29 deletions(-)
+ src/ui/ui_tree_reconciler.cpp     | 274 +++++++++++++++++++++++-------
+ tests/ui_tree_reconciler_test.cpp | 218 ++++++++++++++++++++++++
+ 2 files changed, 427 insertions(+), 65 deletions(-)
 
 diff --git a/src/ui/ui_tree_reconciler.cpp b/src/ui/ui_tree_reconciler.cpp
-index 027a0bf93..f315f0627 100644
+index 027a0bf93..c99082ed6 100644
 --- a/src/ui/ui_tree_reconciler.cpp
 +++ b/src/ui/ui_tree_reconciler.cpp
 @@ -1,5 +1,6 @@
@@ -83,7 +84,7 @@ index 027a0bf93..f315f0627 100644
          return node;
        }
        if (type == "scroll") {
-@@ -256,36 +265,84 @@ namespace ui {
+@@ -256,36 +265,103 @@ namespace ui {
        return nullptr;
      }
  
@@ -163,6 +164,25 @@ index 027a0bf93..f315f0627 100644
 +      });
 +    }
 +
++    // Wrapper input handlers deviate from the retain-absent-props default:
++    // when onClick/onHover disappears while the other callback keeps the
++    // wrapper alive, the stale handler must go with it — a retained one would
++    // leave an invisible node that swallows clicks and sits in tab order as a
++    // keyboard-activatable ghost.
++    void clearWrapperActivation(InputArea* inputArea) {
++      inputArea->setAcceptedButtons(0);
++      inputArea->setFocusable(false);
++      inputArea->setOnClick(nullptr);
++      inputArea->setOnKeyDown(nullptr);
++      // setOnClick(fn) auto-selects the pointer cursor; drop it with the click.
++      inputArea->setCursorShape(0);
++    }
++
++    void clearWrapperHover(InputArea* inputArea) {
++      inputArea->setOnEnter(nullptr);
++      inputArea->setOnLeave(nullptr);
++    }
++
      // Known prop keys per control type — an unknown prop is a loud skip, not a
      // silent no-op, so typos in plugin code surface immediately.
      const std::unordered_set<std::string>& knownProps(const std::string& type) {
@@ -179,7 +199,7 @@ index 027a0bf93..f315f0627 100644
        static const std::unordered_set<std::string> kBox = {"width",       "height",   "flexGrow", "opacity",
                                                             "visible",     "fill",     "radius",   "border",
                                                             "borderWidth", "softness", "onClick",  "onHover"};
-@@ -382,7 +439,7 @@ namespace ui {
+@@ -382,7 +458,7 @@ namespace ui {
      Node* node = nullptr;
      std::string callbackName;        // last-wired button onClick / control onChange target
      std::string rightCallbackName;   // last-wired button onRightClick target
@@ -188,7 +208,7 @@ index 027a0bf93..f315f0627 100644
      std::string submitCallbackName;  // last-wired input onSubmit target
      std::string dragEndCallbackName; // last-wired slider onDragEnd target
      std::string imagePath;           // last-applied resolved image source
-@@ -415,17 +472,23 @@ namespace ui {
+@@ -415,17 +491,23 @@ namespace ui {
        auto flex = std::make_unique<Flex>();
        flex->setDirection(FlexDirection::Vertical);
        flex->setAlign(FlexAlign::Stretch);
@@ -214,7 +234,7 @@ index 027a0bf93..f315f0627 100644
        }
        return std::make_unique<Box>();
      }
-@@ -436,8 +499,8 @@ namespace ui {
+@@ -436,8 +518,8 @@ namespace ui {
        return std::make_unique<Glyph>();
      }
      if (desired.type == "image") {
@@ -225,7 +245,7 @@ index 027a0bf93..f315f0627 100644
        }
        return std::make_unique<Image>();
      }
-@@ -605,7 +668,10 @@ namespace ui {
+@@ -605,7 +687,10 @@ namespace ui {
      const double* height = numProp(desired, "height");
  
      if (desired.type == "column" || desired.type == "row") {
@@ -237,93 +257,191 @@ index 027a0bf93..f315f0627 100644
        if (const double* gap = numProp(desired, "gap")) {
          flex->setGap(scaled(*gap));
        }
-@@ -648,6 +714,33 @@ namespace ui {
+@@ -648,6 +733,45 @@ namespace ui {
          flex->setMinHeight(scaled(*height));
          flex->setMaxHeight(scaled(*height));
        }
-+      if (const std::string* onClick = callbackProp(desired, "onClick");
-+          onClick != nullptr && *onClick != slot.callbackName) {
-+        slot.callbackName = *onClick;
++      if (const std::string* onClick = callbackProp(desired, "onClick"); onClick != nullptr) {
++        if (*onClick != slot.callbackName) {
++          slot.callbackName = *onClick;
++          if (auto* inputArea = inputAreaFromSlot(node)) {
++            wireWrapperActivation(inputArea, [this, name = slot.callbackName]() {
++              if (m_sink) {
++                m_sink(ControlCallback{name});
++              }
++            });
++          }
++        }
++      } else if (!slot.callbackName.empty()) {
++        slot.callbackName.clear();
 +        if (auto* inputArea = inputAreaFromSlot(node)) {
-+          wireWrapperActivation(inputArea, [this, name = slot.callbackName]() {
-+            if (m_sink) {
-+              m_sink(ControlCallback{name});
-+            }
-+          });
++          clearWrapperActivation(inputArea);
 +        }
 +      }
-+      if (const std::string* onHover = callbackProp(desired, "onHover");
-+          onHover != nullptr && *onHover != slot.hoverCallbackName) {
-+        slot.hoverCallbackName = *onHover;
++      if (const std::string* onHover = callbackProp(desired, "onHover"); onHover != nullptr) {
++        if (*onHover != slot.hoverCallbackName) {
++          slot.hoverCallbackName = *onHover;
++          if (auto* inputArea = inputAreaFromSlot(node)) {
++            inputArea->setOnEnter([this, name = slot.hoverCallbackName](const InputArea::PointerData&) {
++              if (m_sink) {
++                m_sink(ControlCallback{name, "true"});
++              }
++            });
++            inputArea->setOnLeave([this, name = slot.hoverCallbackName]() {
++              if (m_sink) {
++                m_sink(ControlCallback{name, "false"});
++              }
++            });
++          }
++        }
++      } else if (!slot.hoverCallbackName.empty()) {
++        slot.hoverCallbackName.clear();
 +        if (auto* inputArea = inputAreaFromSlot(node)) {
-+          inputArea->setOnEnter([this, name = slot.hoverCallbackName](const InputArea::PointerData&) {
-+            if (m_sink) {
-+              m_sink(ControlCallback{name, "true"});
-+            }
-+          });
-+          inputArea->setOnLeave([this, name = slot.hoverCallbackName]() {
-+            if (m_sink) {
-+              m_sink(ControlCallback{name, "false"});
-+            }
-+          });
++          clearWrapperHover(inputArea);
 +        }
 +      }
        return;
      }
  
-@@ -675,20 +768,18 @@ namespace ui {
+@@ -675,33 +799,43 @@ namespace ui {
        if (auto* inputArea = inputAreaFromSlot(node)) {
          inputArea->setSize(boxWidth, boxHeight);
        }
 -      if (const std::string* onClick = strProp(desired, "onClick");
-+      if (const std::string* onClick = callbackProp(desired, "onClick");
-           onClick != nullptr && *onClick != slot.callbackName) {
-         slot.callbackName = *onClick;
+-          onClick != nullptr && *onClick != slot.callbackName) {
+-        slot.callbackName = *onClick;
++      if (const std::string* onClick = callbackProp(desired, "onClick"); onClick != nullptr) {
++        if (*onClick != slot.callbackName) {
++          slot.callbackName = *onClick;
++          if (auto* inputArea = inputAreaFromSlot(node)) {
++            wireWrapperActivation(inputArea, [this, name = slot.callbackName]() {
++              if (m_sink) {
++                m_sink(ControlCallback{name});
++              }
++            });
++          }
++        }
++      } else if (!slot.callbackName.empty()) {
++        slot.callbackName.clear();
          if (auto* inputArea = inputAreaFromSlot(node)) {
 -          // A wrapper created hover-only starts with an empty button mask.
 -          inputArea->setAcceptedButtons(InputArea::buttonMask(BTN_LEFT));
 -          inputArea->setOnClick([this, name = slot.callbackName](const InputArea::PointerData&) {
-+          wireWrapperActivation(inputArea, [this, name = slot.callbackName]() {
-             if (m_sink) {
-               m_sink(ControlCallback{name});
-             }
-           });
+-            if (m_sink) {
+-              m_sink(ControlCallback{name});
+-            }
+-          });
++          clearWrapperActivation(inputArea);
          }
        }
 -      if (const std::string* onHover = strProp(desired, "onHover");
-+      if (const std::string* onHover = callbackProp(desired, "onHover");
-           onHover != nullptr && *onHover != slot.hoverCallbackName) {
-         slot.hoverCallbackName = *onHover;
+-          onHover != nullptr && *onHover != slot.hoverCallbackName) {
+-        slot.hoverCallbackName = *onHover;
++      if (const std::string* onHover = callbackProp(desired, "onHover"); onHover != nullptr) {
++        if (*onHover != slot.hoverCallbackName) {
++          slot.hoverCallbackName = *onHover;
++          if (auto* inputArea = inputAreaFromSlot(node)) {
++            inputArea->setOnEnter([this, name = slot.hoverCallbackName](const InputArea::PointerData&) {
++              if (m_sink) {
++                m_sink(ControlCallback{name, "true"});
++              }
++            });
++            inputArea->setOnLeave([this, name = slot.hoverCallbackName]() {
++              if (m_sink) {
++                m_sink(ControlCallback{name, "false"});
++              }
++            });
++          }
++        }
++      } else if (!slot.hoverCallbackName.empty()) {
++        slot.hoverCallbackName.clear();
          if (auto* inputArea = inputAreaFromSlot(node)) {
-@@ -809,20 +900,18 @@ namespace ui {
+-          inputArea->setOnEnter([this, name = slot.hoverCallbackName](const InputArea::PointerData&) {
+-            if (m_sink) {
+-              m_sink(ControlCallback{name, "true"});
+-            }
+-          });
+-          inputArea->setOnLeave([this, name = slot.hoverCallbackName]() {
+-            if (m_sink) {
+-              m_sink(ControlCallback{name, "false"});
+-            }
+-          });
++          clearWrapperHover(inputArea);
+         }
+       }
+       return;
+@@ -809,33 +943,43 @@ namespace ui {
            }
          }
        }
 -      if (const std::string* onClick = strProp(desired, "onClick");
-+      if (const std::string* onClick = callbackProp(desired, "onClick");
-           onClick != nullptr && *onClick != slot.callbackName) {
-         slot.callbackName = *onClick;
+-          onClick != nullptr && *onClick != slot.callbackName) {
+-        slot.callbackName = *onClick;
++      if (const std::string* onClick = callbackProp(desired, "onClick"); onClick != nullptr) {
++        if (*onClick != slot.callbackName) {
++          slot.callbackName = *onClick;
++          if (auto* inputArea = inputAreaFromSlot(node)) {
++            wireWrapperActivation(inputArea, [this, name = slot.callbackName]() {
++              if (m_sink) {
++                m_sink(ControlCallback{name});
++              }
++            });
++          }
++        }
++      } else if (!slot.callbackName.empty()) {
++        slot.callbackName.clear();
          if (auto* inputArea = inputAreaFromSlot(node)) {
 -          // A wrapper created hover-only starts with an empty button mask.
 -          inputArea->setAcceptedButtons(InputArea::buttonMask(BTN_LEFT));
 -          inputArea->setOnClick([this, name = slot.callbackName](const InputArea::PointerData&) {
-+          wireWrapperActivation(inputArea, [this, name = slot.callbackName]() {
-             if (m_sink) {
-               m_sink(ControlCallback{name});
-             }
-           });
+-            if (m_sink) {
+-              m_sink(ControlCallback{name});
+-            }
+-          });
++          clearWrapperActivation(inputArea);
          }
        }
 -      if (const std::string* onHover = strProp(desired, "onHover");
-+      if (const std::string* onHover = callbackProp(desired, "onHover");
-           onHover != nullptr && *onHover != slot.hoverCallbackName) {
-         slot.hoverCallbackName = *onHover;
+-          onHover != nullptr && *onHover != slot.hoverCallbackName) {
+-        slot.hoverCallbackName = *onHover;
++      if (const std::string* onHover = callbackProp(desired, "onHover"); onHover != nullptr) {
++        if (*onHover != slot.hoverCallbackName) {
++          slot.hoverCallbackName = *onHover;
++          if (auto* inputArea = inputAreaFromSlot(node)) {
++            inputArea->setOnEnter([this, name = slot.hoverCallbackName](const InputArea::PointerData&) {
++              if (m_sink) {
++                m_sink(ControlCallback{name, "true"});
++              }
++            });
++            inputArea->setOnLeave([this, name = slot.hoverCallbackName]() {
++              if (m_sink) {
++                m_sink(ControlCallback{name, "false"});
++              }
++            });
++          }
++        }
++      } else if (!slot.hoverCallbackName.empty()) {
++        slot.hoverCallbackName.clear();
          if (auto* inputArea = inputAreaFromSlot(node)) {
+-          inputArea->setOnEnter([this, name = slot.hoverCallbackName](const InputArea::PointerData&) {
+-            if (m_sink) {
+-              m_sink(ControlCallback{name, "true"});
+-            }
+-          });
+-          inputArea->setOnLeave([this, name = slot.hoverCallbackName]() {
+-            if (m_sink) {
+-              m_sink(ControlCallback{name, "false"});
+-            }
+-          });
++          clearWrapperHover(inputArea);
+         }
+       }
+       return;
 diff --git a/tests/ui_tree_reconciler_test.cpp b/tests/ui_tree_reconciler_test.cpp
-index 990759c42..e332aacc5 100644
+index 990759c42..109fc0961 100644
 --- a/tests/ui_tree_reconciler_test.cpp
 +++ b/tests/ui_tree_reconciler_test.cpp
-@@ -277,6 +277,219 @@ int main() {
+@@ -277,6 +277,224 @@ int main() {
      ok = expect(dynamic_cast<Box*>(unwrapped) != nullptr, "box unwrapped after onClick removed") && ok;
    }
  
@@ -414,10 +532,9 @@ index 990759c42..e332aacc5 100644
 +      // Validate matching uses the application's global keybind matcher, which this test does not configure.
 +    }
 +
-+    // Hover-only wrappers start with an empty button mask and never take focus.
-+    // A FRESH tree is required here: swapping onClick for onHover on a retained
-+    // node keeps the old mask/focus state (absent props never clear — the same
-+    // retained-prop semantic box/image clickables have today).
++    // Hover-only wrappers start with an empty button mask and never take
++    // focus. (The retained-node route to the same state — onClick removed
++    // while onHover stays — is covered by the clearing test above.)
 +    {
 +      ui::UiTreeReconciler reconciler;
 +      Flex host;
@@ -463,9 +580,10 @@ index 990759c42..e332aacc5 100644
 +      }
 +      ok = expect(fired == "second", "reconciled container callback replaces the old click callback") && ok;
 +
-+      // onClick emptied while onHover keeps the wrapper alive: the empty name
-+      // must not rewire (it would emit fn=""); the old handler stays, per the
-+      // documented retained-prop semantics.
++      // onClick emptied while onHover keeps the wrapper alive: wrapper input
++      // handlers clear on removal (deviating from the retain-absent-props
++      // default) — a retained one would leave an invisible click-swallowing,
++      // keyboard-activatable node. The wrapper drops mask, focus, and handler.
 +      tree.props["onClick"] = std::string();
 +      tree.props.emplace("onHover", std::string("h"));
 +      (void)reconciler.reconcile(host, tree, renderer);
@@ -474,7 +592,12 @@ index 990759c42..e332aacc5 100644
 +        area->dispatchPress(5.0f, 5.0f, BTN_LEFT, true);
 +        area->dispatchPress(5.0f, 5.0f, BTN_LEFT, false);
 +      }
-+      ok = expect(fired == "second", "emptied onClick keeps the previously wired callback") && ok;
++      ok = expect(
++               fired.empty() && area != nullptr && area->acceptedButtons() == 0 && !area->focusable()
++                   && area->cursorShape() == 0,
++               "emptied onClick clears the wrapper's activation"
++           )
++          && ok;
 +    }
 +
 +    // An empty callback name is "unset": wiring is change-detected against the
