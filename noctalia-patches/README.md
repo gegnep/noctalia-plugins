@@ -48,9 +48,9 @@ means the remaining files still match their history and branch names.
 
 | Patch(es) | PR | Status |
 |---|---|---|
-| 0001-0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` 2026-07-15 (0001/0003 picked up upstream's new `controlSize` allowlist entries); fork branch `plugin-ui-props` needs a force-push before the PR diff matches these files again. |
+| 0001-0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` 2026-07-15 (0001/0003 picked up upstream's new `controlSize` allowlist entries); fork branch force-pushed same day, PR diff matches these files. |
 | 0007 button radius/padding | [#3355](https://github.com/noctalia-dev/noctalia/pull/3355) | **Rejected 2026-07-14** — maintainer: buttons stay cohesive, pills should be built from box/row. Patch file deleted; capability replaced by 0009. |
-| 0008 + 0009 | not submitted yet | One PR, two commits, from branch `plugin-clickable-containers` (0008 regenerated standalone off `main`, 0009 stacked on it). Framed as the follow-up to the #3355 review guidance. |
+| 0008 + 0009 | [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) | Open (2026-07-15), awaiting review. One PR, two commits, from branch `plugin-clickable-containers` (0008 regenerated standalone off `main`, 0009 stacked on it). |
 | `barWidget.outputName` (was 0006) | [#3352](https://github.com/noctalia-dev/noctalia/pull/3352) | Merged 2026-07-11. |
 | `noctalia.appIconPath` (was 0009) | [#3356](https://github.com/noctalia-dev/noctalia/pull/3356) | Merged 2026-07-11. Review added thread-safety fixes beyond what was submitted: a mutex around `IconResolver`'s shared theme-plan state, and a `shared_ptr` desktop-entry snapshot instead of a per-call copy. |
 
