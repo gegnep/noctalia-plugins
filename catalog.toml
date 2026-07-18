@@ -9,7 +9,7 @@ author = "pengeg"
 license = "MIT"
 icon = "asterisk"
 description = "Streaming chat panel for Claude, backed by the Claude Code CLI (subscription auth). Not affiliated with Anthropic."
-min_noctalia = "5.0.0"
+plugin_api = 3
 tags = ["chat", "ai", "claude", "assistant"]
 
 [[plugin]]
@@ -20,5 +20,5 @@ author = "pengeg"
 license = "MIT"
 icon = "layout-grid"
 description = "Combined niri workspace/taskbar widget: workspace chips that expand on hover to show each workspace's windows."
-min_noctalia = "5.0.0"
+plugin_api = 3
 tags = ["niri", "workspaces", "taskbar"]

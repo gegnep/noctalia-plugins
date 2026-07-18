@@ -11,7 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "catalog.toml"
-REQUIRED_FIELDS = ("id", "name", "version", "author", "min_noctalia", "tags")
+REQUIRED_FIELDS = ("id", "name", "version", "author", "plugin_api", "tags")
 OPTIONAL_STRING_FIELDS = ("license", "icon", "description")
 OPTIONAL_BOOL_FIELDS = ("deprecated",)
 EMIT_FIELDS = (
@@ -23,7 +23,7 @@ EMIT_FIELDS = (
     "icon",
     "description",
     "deprecated",
-    "min_noctalia",
+    "plugin_api",
     "tags",
 )
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -43,6 +43,15 @@ def require_string(manifest: dict[str, Any], path: Path, field: str) -> str:
     value = manifest[field]
     if not isinstance(value, str) or not value:
         fail(path, field, "must be a non-empty string")
+    return value
+
+
+def require_positive_int(manifest: dict[str, Any], path: Path, field: str) -> int:
+    if field not in manifest:
+        fail(path, field, "missing required field")
+    value = manifest[field]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        fail(path, field, "must be a positive integer")
     return value
 
 
@@ -68,7 +77,7 @@ def read_manifest(path: Path) -> dict[str, Any]:
         "name": require_string(raw, path, "name"),
         "version": require_string(raw, path, "version"),
         "author": require_string(raw, path, "author"),
-        "min_noctalia": require_string(raw, path, "min_noctalia"),
+        "plugin_api": require_positive_int(raw, path, "plugin_api"),
         "tags": require_tags(raw, path),
         "_directory": path.parent.name,
     }
@@ -135,6 +144,8 @@ def toml_string(value: str) -> str:
 def toml_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
     if isinstance(value, list):
         return "[" + ", ".join(toml_string(item) for item in value) + "]"
     if isinstance(value, str):
