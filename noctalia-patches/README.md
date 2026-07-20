@@ -48,9 +48,9 @@ means the remaining files still match their history and branch names.
 
 | Patch(es) | PR | Status |
 |---|---|---|
-| 0001-0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` 2026-07-15 (0001/0003 picked up upstream's new `controlSize` allowlist entries); fork branch force-pushed same day, PR diff matches these files. |
+| 0001-0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` 2026-07-20 (0002's kScroll allowlist hunk conflicted with upstream's new drag_source/drop_zone prop sets); fork branch `plugin-ui-props` needs a `--force-with-lease` push before the PR diff matches these files again. |
 | 0007 button radius/padding | [#3355](https://github.com/noctalia-dev/noctalia/pull/3355) | **Rejected 2026-07-14** — maintainer: buttons stay cohesive, pills should be built from box/row. Patch file deleted; capability replaced by 0009. |
-| 0008 + 0009 | [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) | Open (2026-07-15), awaiting review. One PR, two commits, from branch `plugin-clickable-containers` (0008 regenerated standalone off `main`, 0009 stacked on it). |
+| 0008 + 0009 | [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) | Open (2026-07-15), awaiting review. One PR, two commits, from branch `plugin-clickable-containers` (0008 regenerated standalone off `main`, 0009 stacked on it). Rebased onto `main` 2026-07-20 (0009's childContainer and flex-apply regions conflicted with drag_source/drop_zone; drag types stay unwrapped, `controlFromSlot<Flex>` now serves all four flex types); needs the same `--force-with-lease` push. |
 | `barWidget.outputName` (was 0006) | [#3352](https://github.com/noctalia-dev/noctalia/pull/3352) | Merged 2026-07-11. |
 | `noctalia.appIconPath` (was 0009) | [#3356](https://github.com/noctalia-dev/noctalia/pull/3356) | Merged 2026-07-11. Review added thread-safety fixes beyond what was submitted: a mutex around `IconResolver`'s shared theme-plan state, and a `shared_ptr` desktop-entry snapshot instead of a per-call copy. |
 
@@ -60,8 +60,8 @@ conflict slide: an unrelated upstream addition to `meson.build`'s test
 sources broke 0003's plain `git apply` context match, but `git rebase`
 resolved it as a clean 3-way merge with no manual intervention. The full
 sequence (0001-0005, 0008, 0009 — in that order; 0009 needs 0008) was last
-verified against `main` (`4bf957f4c`) on 2026-07-15 via `git am --3way` in
-a throwaway worktree.
+verified against `main` (`0e36c582e`) on 2026-07-20 with GNU `patch -p1`
+in filename order (mirroring the nix patchPhase) in a throwaway worktree.
 
 ## Applying the Patches
 
