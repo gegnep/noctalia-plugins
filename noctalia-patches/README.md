@@ -22,10 +22,10 @@ clickable/hoverable containers, per-node hover events, and native icon
 resolution. These patches add exactly those bindings.
 
 Developed and rebased against upstream `main` (branch `plugin-ui-props`
-for 0001-0005; `plugin-hover-prop` for 0008 with
-`plugin-clickable-containers` stacking 0009 on top). Two of the original
+for 0001-0003 and 0005; `plugin-hover-prop` for 0008 with
+`plugin-clickable-containers` stacking 0009 on top). Three of the original
 capabilities have already shipped upstream, and one (0007, button
-radius/padding) was rejected in review and replaced by 0009; all three are
+radius/padding) was rejected in review and replaced by 0009; all four are
 documented below but are no longer patch files in this directory.
 
 ## Patch List
@@ -35,20 +35,21 @@ documented below but are no longer patch files in this directory.
 | `0001` input `submitOnEnter` | Opt-in chat-style submit: Enter sends, Shift+Enter inserts a newline, Ctrl+Enter still sends. Default off, so existing behavior is unchanged. | claude-launcher |
 | `0002` scroll `stickToBottom` / `onScroll` / `scrollToBottomRev` | Follow-scroll while content grows, an `onScroll(offset, maxOffset)` callback, and an explicit jump-to-bottom trigger. | claude-launcher |
 | `0003` `ui.markdown` node | Registers the existing md4c `MarkdownView` control for plugin trees, with a `text` prop cached per slot so streaming re-renders don't re-parse unchanged text. | claude-launcher |
-| `0004` stream slot reaping | Bugfix: `runStream` slots (cap 4 per host) were only freed on host teardown, so short-lived streams could exhaust the cap after four runs. | claude-launcher |
 | `0005` MarkdownView measure fix | Bugfix: wrap width wasn't applied at measure time, under-allocating height and overlapping sibling rows. | claude-launcher |
 | `0008` `onHover` on button/box/image | Pointer enter/leave delivered as an `onHover("true"` or `"false")` callback. Standalone since 2026-07-15 (used to stack on the rejected 0007). | niri-taskbar |
 | `0009` `onClick`/`onHover` on row/column | Clickable, hoverable flex containers (the reconciler wraps them in a measure-forwarding InputArea; clickable wrappers are also keyboard-activatable). Replaces 0007: chips are now `ui.row`+`ui.label` pills instead of restyled buttons. Depends on 0008 (same file). | niri-taskbar |
 
-The numbering gaps (0006, 0007 missing) are intentional: 0006 shipped
-upstream and 0007 was rejected (see below); keeping the numbers stable
-means the remaining files still match their history and branch names.
+The numbering gaps (0004, 0006, 0007 missing) are intentional: 0004 and
+0006 shipped upstream and 0007 was rejected (see below); keeping the
+numbers stable means the remaining files still match their history and
+branch names.
 
 ## Upstream Status
 
 | Patch(es) | PR | Status |
 |---|---|---|
-| 0001-0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` 2026-07-20 (0002's kScroll allowlist hunk conflicted with upstream's new drag_source/drop_zone prop sets); fork branch `plugin-ui-props` needs a `--force-with-lease` push before the PR diff matches these files again. |
+| 0001-0003, 0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` 2026-07-20 twice: first over the drag_source/drop_zone merge (0002's kScroll allowlist hunk conflicted), then over `3065b0567` which obsoleted 0004 — the branch is now four commits and needs a `--force-with-lease` push before the PR diff matches these files again. |
+| 0004 stream slot reaping | — | **Shipped upstream independently 2026-07-20**: `3065b0567` (closes upstream [#3517](https://github.com/noctalia-dev/noctalia/issues/3517)) frees dead slots lazily at `startStream` via an `alive` flag set by `onExit` — functionally equivalent for the plugins. Patch file deleted, commit dropped from #3327. |
 | 0007 button radius/padding | [#3355](https://github.com/noctalia-dev/noctalia/pull/3355) | **Rejected 2026-07-14** — maintainer: buttons stay cohesive, pills should be built from box/row. Patch file deleted; capability replaced by 0009. |
 | 0008 + 0009 | [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) | Open (2026-07-15), awaiting review. One PR, two commits, from branch `plugin-clickable-containers` (0008 regenerated standalone off `main`, 0009 stacked on it). Rebased onto `main` 2026-07-20 (0009's childContainer and flex-apply regions conflicted with drag_source/drop_zone; drag types stay unwrapped, `controlFromSlot<Flex>` now serves all four flex types); needs the same `--force-with-lease` push. |
 | `barWidget.outputName` (was 0006) | [#3352](https://github.com/noctalia-dev/noctalia/pull/3352) | Merged 2026-07-11. |
@@ -59,9 +60,10 @@ are actually based against. Checking against `cachix` once let a real
 conflict slide: an unrelated upstream addition to `meson.build`'s test
 sources broke 0003's plain `git apply` context match, but `git rebase`
 resolved it as a clean 3-way merge with no manual intervention. The full
-sequence (0001-0005, 0008, 0009 — in that order; 0009 needs 0008) was last
-verified against `main` (`0e36c582e`) on 2026-07-20 with GNU `patch -p1`
-in filename order (mirroring the nix patchPhase) in a throwaway worktree.
+sequence (0001-0003, 0005, 0008, 0009 — in that order; 0009 needs 0008)
+was last verified against `main` (`32c608f7d`) on 2026-07-20 with GNU
+`patch -p1` in filename order (mirroring the nix patchPhase) in a
+throwaway worktree.
 
 ## Applying the Patches
 
@@ -73,7 +75,6 @@ As a nixos flake overlay on the noctalia package:
     ./noctalia-patches/0001-feat-plugin-ui-add-input-submitOnEnter-prop-for-chat.patch
     ./noctalia-patches/0002-feat-plugin-ui-add-scroll-stickToBottom-onScroll-and.patch
     ./noctalia-patches/0003-feat-plugin-ui-register-markdown-node-type-backed-by.patch
-    ./noctalia-patches/0004-fix-plugins-reclaim-stream-slots-when-the-process-ex.patch
     ./noctalia-patches/0005-fix-ui-measure-MarkdownView-with-wrapped-label-sizes.patch
     ./noctalia-patches/0008-feat-plugins-expose-onHover-callback-on-button-box-a.patch
     ./noctalia-patches/0009-feat-plugins-expose-onClick-and-onHover-on-row-and-c.patch
