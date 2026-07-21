@@ -1,16 +1,17 @@
 # niri-taskbar
 
-A combined workspace/taskbar bar widget for [niri](https://github.com/YaLTeR/niri),
-built for [Noctalia](https://noctalia.dev) v5. It renders compact workspace
-chips colored like Noctalia's native workspaces widget (active = primary,
-occupied = secondary, urgent = error, empty = muted), and on hover a chip
+A bar widget for [Noctalia](https://noctalia.dev) v5 that combines
+[niri](https://github.com/YaLTeR/niri) workspaces and a taskbar. It renders compact workspace
+chips colored like Noctalia's native workspaces widget: active is primary,
+occupied is secondary, urgent is error, empty is muted. On hover, a chip
 rounds out and grows into a tinted pill containing real app-icon tiles for
 every window on that workspace.
 
 ![niri-taskbar default bar strip, all chips collapsed](./screenshots/bar-strip.png)
 ![niri-taskbar chip expanded on hover, showing window icon tiles](./screenshots/expanded-chip.png)
 
-niri only; it drives itself entirely off `niri msg --json event-stream`.
+The widget targets niri only. It drives itself entirely off `niri msg
+--json event-stream`.
 
 ## Table of Contents
 
@@ -24,30 +25,32 @@ niri only; it drives itself entirely off `niri msg --json event-stream`.
 
 ## Features
 
-- Workspace chips matching the native workspaces widget's palette: active =
-  primary, occupied = secondary, urgent = error, empty = muted
-- Idle chips are stretchable via `chip_ratio`, from a 100% circle to a 400%
-  line (default 140%, a compact oval), and always round back into a circle
-  on hover
-- Hover a chip to expand it into a tinted pill (a primary hairline border
-  around app-icon tiles for every window on that workspace), fading in and
-  out at a configurable speed (`expand_speed`); click a tile to focus that
-  window
+- Workspace chips match the native workspaces widget's palette: active is
+  primary, occupied is secondary, urgent is error, empty is muted
+- Idle chips stretch via `chip_ratio`, from a 100% circle to a 400% line
+  (default 140%, a compact oval). They always round back into a circle on
+  hover.
+- Hover a chip to expand it into a tinted pill with a primary hairline
+  border. The pill holds app-icon tiles for every window on that workspace,
+  and fades in and out at a configurable speed (`expand_speed`). Click a
+  tile to focus that window.
 - The focused window's tile gets a primary dot underneath it; an urgent
   window gets an error-colored dot instead (`show_focus_dot`)
 - Four label modes (`display`): workspace id, name (falls back to id),
   window count, or a bare pill with no label
 - Per-workspace hover: hovering one chip expands only that chip, not every
-  chip on the bar (needs the `onHover` patch; see Requirements)
-- Click a chip to focus its workspace; on a multi-monitor setup this chains
-  a focus-monitor call first so cross-monitor chip clicks land correctly
-- Windows within an expanded chip are ordered by niri's own scrolling-layout
-  column/window position, not arrival order
-- Scoped to its own monitor by default, or the compositor's focused monitor
-  regardless of which bar instance you're looking at (`focused_output_only`,
-  needs `barWidget.outputName`, shipped upstream; see Requirements)
-- Live via `niri msg --json event-stream`, with a 30-second self-healing
-  resync in case an event is ever missed
+  chip on the bar (needs the row/column patch; see Requirements)
+- Click a chip to focus its workspace. On a multi-monitor setup, this
+  chains a focus-monitor call first, so cross-monitor chip clicks land
+  correctly.
+- Windows within an expanded chip sort by niri's own scrolling-layout
+  column and window position, not arrival order
+- Scoped to its own monitor by default. Optionally scopes to the
+  compositor's focused monitor instead, regardless of which bar instance
+  you're looking at (`focused_output_only`, needs `barWidget.outputName`,
+  shipped upstream; see Requirements)
+- Live via `niri msg --json event-stream`. The widget also resyncs every
+  30 seconds to recover from any missed event.
 - Real app icons resolved through Noctalia's own icon machinery (needs
   `noctalia.appIconPath`, shipped upstream), falling back to an
   initial-letter tile otherwise
@@ -55,28 +58,28 @@ niri only; it drives itself entirely off `niri msg --json event-stream`.
 ## Requirements
 
 - niri as the compositor.
-- A Noctalia v5 build. The widget runs on stock Noctalia but looks and
+- A Noctalia v5 build. The widget runs on stock Noctalia, but looks and
   behaves best with everything below available. Two capabilities shipped
-  upstream and just need a current build; the other two still need a local
-  patch from [`../noctalia-patches/`](../noctalia-patches); see that
-  directory's README for what each one does and how to apply them.
+  upstream and need only a current build. The other two still need a
+  local patch from [`../noctalia-patches/`](../noctalia-patches); see that
+  directory's README for what each patch does and how to apply it.
 
   | Capability | Adds | Without it |
   |---|---|---|
   | `barWidget.outputName` (upstream, merged [#3352](https://github.com/noctalia-dev/noctalia/pull/3352)) | Scopes the widget to its own monitor | Every instance shows all outputs' workspaces |
   | `noctalia.appIconPath` (upstream, merged [#3356](https://github.com/noctalia-dev/noctalia/pull/3356)) | Native icon resolution for window tiles | Tiles fall back to an initial-letter glyph |
-  | 0009 row/label `onClick`/`onHover` (local patch, [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) open) | Workspace chips are clickable and hoverable (click-to-switch, per-workspace expand) | Chips still render fully styled (row already supports width/height/radius/fill/border/align/justify natively) but are INERT — no click, no hover, only the widget-level expand-all fallback still works |
-  | 0008 `onHover` on button/box/image (local patch, [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) open) | Window-tile hover (grey hover dot, per-tile group-keep-alive) | Window tiles lose their grey hover dot; chip hover (0009, above) is unaffected |
+  | 0009, row/column `onClick`/`onHover` (local patch, [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) open) | Workspace chips become clickable and hoverable: click to switch, hover to expand per workspace | Chips still render fully styled; row supports the chip geometry natively. They emit no click or hover of their own. The widget-level expand-all fallback still works. |
+  | 0008, `onHover` on button/box/image (local patch, [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) open) | Window-tile hover: grey hover dot, per-tile group-keep-alive | Window tiles lose their grey hover dot; chip hover (0009, above) is unaffected |
 
-  The workspace chip used to be a `ui.button` and needed a since-rejected
-  0007 patch (button radius/padding) for its shape; it's now a `ui.row` +
+  The workspace chip used to be a `ui.button`, and needed a since-rejected
+  patch (button radius/padding) for its shape. It's now a `ui.row` plus
   `ui.label`, which has always supported that geometry with no patch at
-  all — only its clickability now depends on a patch (0009, above).
+  all. Only its clickability now depends on a patch (0009, above).
 
 ## Install
 
-**As a plugin source** (Noctalia clones and manages the repo itself, no
-local checkout needed):
+**As a plugin source.** Noctalia clones and manages the repo itself; you
+need no local checkout.
 
 ```sh
 noctalia msg plugins source add gegnep-plugins git https://github.com/gegnep/noctalia-plugins
@@ -86,8 +89,8 @@ noctalia msg plugins enable gegnep/niri-taskbar
 Or add the repo as a plugin source in Settings, Plugins, and install
 **Niri Taskbar** from the plugin browser.
 
-**Symlink** into Noctalia's local plugin directory (for local development or
-if you'd rather manage the checkout yourself):
+**Symlink** into Noctalia's local plugin directory. Use this for local
+development, or if you'd rather manage the checkout yourself.
 
 ```sh
 git clone https://github.com/gegnep/noctalia-plugins
@@ -106,27 +109,28 @@ widget.
 | `show_empty_workspaces` | bool | `true` | Show chips for workspaces with no windows (the active workspace is always shown) |
 | `display` | select | `id` | What each chip shows: the workspace index (`id`), its name falling back to the index (`name`), its window count (`windows`), or a bare pill (`none`) |
 | `window_titles` | select | `off` | Truncated window title next to tiles: `off`, `hover` (only the tile under the pointer), or `always` (forced off in a vertical/side bar) |
-| `max_windows_per_workspace` | int | `10` | Cap on expanded window tiles per workspace before collapsing the rest into a `+N` label |
+| `max_windows_per_workspace` | int | `10` | Cap on expanded window tiles per workspace before collapsing the rest into a `+N` label. Range 1-30. |
 | `labels_only_when_occupied` | bool | `false` | Hide the label on empty, inactive workspace chips, leaving a bare pill |
-| `max_label_chars` | int | `1` | Truncate workspace name labels to this many characters (purely numeric labels are never truncated) |
+| `max_label_chars` | int | `1` | Truncate workspace name labels to this many characters (purely numeric labels are never truncated). Range 1-20. |
 | `only_active_workspace` | bool | `false` | Show window tiles only for each monitor's active workspace; other workspace chips still render |
-| `icon_size` | int | `16` | Window app icon size in pixels |
-| `chip_size` | int | `16` | Workspace chip diameter |
-| `chip_ratio` | int | `140` | Idle chip width-to-height ratio (%): 100 is a circle, 140 a compact oval, 300+ approaches a line; chips always round into circles on expand (labels hide when the chip is too flat to fit them) |
-| `chip_spacing` | int | `3` | Spacing between workspaces |
-| `collapse_delay_ms` | int | `1250` | Hover linger before collapse, in milliseconds |
+| `icon_size` | int | `16` | Window app icon size in pixels. Range 12-32. |
+| `chip_size` | int | `16` | Workspace chip diameter. Range 12-24. |
+| `chip_ratio` | int | `140` | Idle chip width-to-height ratio in percent. 100 is a circle, 140 a compact oval, 300+ approaches a line. Chips always round into circles on expand; labels hide when the chip is too flat to fit them. Range 100-400. |
+| `chip_spacing` | int | `3` | Spacing between workspaces. Range 0-12. |
+| `collapse_delay_ms` | int | `1250` | Hover linger before collapse, in milliseconds. Range 250-5000. |
 | `expand_speed` | select | `normal` | Expand animation speed: `fast`, `normal`, or `slow` |
 | `show_focus_dot` | bool | `true` | Show a dot under the focused (primary) and urgent (error-colored) windows' tiles |
-| `pill_tint` | int | `30` | Expanded pill tint strength, as a percentage |
+| `pill_tint` | int | `30` | Expanded pill tint strength, as a percentage. Range 0-60. |
 
 ## Notes and Limitations
 
-- Labels auto-hide on very flat idle chips (high `chip_ratio`) since there's
-  no room to render text.
-- Without the `onHover` patch, hovering any chip expands all of them, with a
-  short collapse-grace fallback instead of true per-workspace hover.
+- Labels auto-hide on very flat idle chips (high `chip_ratio`), since there
+  is no room to render text.
+- Without the row/column patch (0009), hovering any chip expands all of
+  them, with a short collapse-grace fallback instead of true per-workspace
+  hover.
 - The 30-second resync only replaces state if nothing changed while it was
-  in flight; a live event always wins over a stale snapshot.
+  in flight. A live event always wins over a stale snapshot.
 
 ## Development
 
@@ -134,20 +138,26 @@ widget.
 nix develop   # or let direnv load it automatically
 ```
 
-Linting the manifest and settings wiring does not parse Luau; the fixture
+Linting the manifest and settings wiring does not parse Luau. The fixture
 harness below is the real code gate.
 
+Lint the manifest and settings wiring:
+
 ```sh
-noctalia plugins lint niri-taskbar   # lint the manifest and settings wiring
-./niri-taskbar/fixtures/dry-run.sh   # run the offline fixture harness
+noctalia plugins lint niri-taskbar
 ```
 
-The fixture harness feeds captured `niri msg --json event-stream` output,
-workspace/window snapshots, and icon-resolution scenarios through
-`taskbar.luau`'s parser and render logic, checking the resulting state
-against expectations. See
-[`fixtures/parser-spec.md`](./fixtures/parser-spec.md) for the event state
-machine.
+Run the offline fixture harness:
+
+```sh
+./niri-taskbar/fixtures/dry-run.sh
+```
+
+The fixture harness feeds `taskbar.luau`'s parser and render logic with
+captured `niri msg --json event-stream` output, workspace and window
+snapshots, and icon-resolution scenarios. It checks the resulting state
+against expectations. See [`fixtures/parser-spec.md`](./fixtures/parser-spec.md)
+for the event state machine.
 
 If niri changes its IPC event shape in a future release, re-derive the
 fixtures and spec from a live session:
@@ -156,9 +166,9 @@ fixtures and spec from a live session:
 ./niri-taskbar/fixtures/capture-dumps.sh
 ```
 
-Everything lives in a single `taskbar.luau` (no separate service). It holds
-workspace/window state in memory, keyed by niri's own ids, and reconciles
-on every IPC event plus the periodic resync.
+Everything lives in a single `taskbar.luau` file, with no separate service.
+It holds workspace and window state in memory, keyed by niri's own ids,
+and reconciles on every IPC event plus the periodic resync.
 
 ## License
 

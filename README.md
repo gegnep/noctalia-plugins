@@ -1,9 +1,9 @@
 # noctalia-plugins
 
-Personal plugins I built for my own [Noctalia](https://noctalia.dev) v5
-setup: a streaming Claude chat panel and a niri workspace/taskbar widget,
-written with the help of AI tooling. I use both daily; sharing them here in
-case they're useful to you too.
+These are plugins I built for my own [Noctalia](https://noctalia.dev) v5
+setup, written with the help of AI tooling. There are two: a streaming
+Claude chat panel, and a niri workspace/taskbar widget. I use both daily
+and share them here in case they help you too.
 
 ## Table of Contents
 
@@ -20,8 +20,8 @@ case they're useful to you too.
 
 ### claude-launcher
 
-A streaming chat panel for Claude, backed by your own `claude` CLI login. No
-API key; it bills against your Pro/Max subscription.
+A streaming chat panel for Claude, backed by your own `claude` CLI login.
+It needs no API key; usage bills against your Pro/Max subscription.
 
 ![claude-launcher streaming a markdown reply](./claude-launcher/screenshots/chat.png)
 
@@ -29,8 +29,8 @@ API key; it bills against your Pro/Max subscription.
 
 ### niri-taskbar
 
-A combined niri workspace/taskbar bar widget: stretchable idle chips that
-expand on hover into a pill of real app-icon window tiles.
+A bar widget that combines niri workspaces and a taskbar. Stretchable idle
+chips expand on hover into a pill of real app-icon window tiles.
 
 ![niri-taskbar chip expanded on hover, showing window icon tiles](./niri-taskbar/screenshots/expanded-chip.png)
 
@@ -38,21 +38,23 @@ expand on hover into a pill of real app-icon window tiles.
 
 ## Host Patches
 
-Both plugins lean on a small set of additive patches to Noctalia itself.
-None change existing behavior; they're all either default-off or new
-bindings a plugin has to opt into. Two of the original nine capabilities
-have already shipped upstream (native to any current Noctalia build); the
-remaining seven are open PRs or staged for submission.
+Both plugins depend on a small set of patches to Noctalia itself. Five
+patches add opt-in props or new bindings; 0009 also extends existing box
+and image clickables with keyboard activation. One (0005) fixes a
+MarkdownView measurement bug in the host. Of the original nine
+capabilities, three now ship on upstream `main`. Upstream rejected one in
+review, and patch 0009 replaces its approach. The rest sit in two open
+pull requests.
 
 See **[`noctalia-patches/README.md`](./noctalia-patches/README.md)** for the
-full patch list, current upstream status, and how to apply them. Each
-plugin's own README also documents exactly how it degrades on a stock,
-unpatched Noctalia build.
+full patch list, current upstream status, and how to apply them.
+claude-launcher requires its patches; the niri-taskbar README documents how
+that widget degrades on a stock, unpatched Noctalia build.
 
 ## Install
 
-**As a plugin source** (Noctalia clones and manages the repo itself, no
-local checkout needed):
+**As a plugin source.** Noctalia clones and manages the repo itself; you
+need no local checkout.
 
 ```sh
 noctalia msg plugins source add gegnep-plugins git https://github.com/gegnep/noctalia-plugins
@@ -60,8 +62,9 @@ noctalia msg plugins enable gegnep/claude-launcher
 noctalia msg plugins enable gegnep/niri-taskbar
 ```
 
-**Symlink** a single plugin into Noctalia's local plugin directory (for
-local development or if you'd rather manage the checkout yourself):
+**Symlink a single plugin** into Noctalia's local plugin directory. Use
+this for local development, or if you'd rather manage the checkout
+yourself.
 
 ```sh
 git clone https://github.com/gegnep/noctalia-plugins
@@ -77,24 +80,28 @@ nix develop   # or let direnv load it automatically
 ```
 
 The devshell provides `luau`, `jq`, `fd`, and `ripgrep`: everything each
-plugin's fixture harness needs, no running Noctalia instance required.
+plugin's fixture harness needs. No running Noctalia instance is required.
 
 ```sh
 noctalia plugins lint   # lint all plugin manifests and Luau sources
 ```
 
-Each plugin has its own offline fixture harness under `<plugin>/fixtures/`
-(`dry-run.sh`); see the plugin's README for what it covers.
+Each plugin has its own offline fixture harness; see the plugin's README
+for what it covers. Run both from the repository root:
 
-`catalog.toml` (required for consuming this repo as a git plugin source) is
-auto-generated from `*/plugin.toml`. Regenerate with
-`python3 tools/update-catalog.py` (CI also does this on push to `main`).
-Don't edit it by hand.
+```sh
+./claude-launcher/fixtures/dry-run.sh
+./niri-taskbar/fixtures/dry-run.sh
+```
+
+`catalog.toml` is required for consuming this repo as a git plugin source.
+`python3 tools/update-catalog.py` generates it from `*/plugin.toml` (CI
+also runs this on push to `main`). Don't edit it by hand.
 
 ## Credits
 
 Built on [Noctalia](https://noctalia.dev) by the
-[noctalia-dev](https://github.com/noctalia-dev) team
+[noctalia-dev](https://github.com/noctalia-dev) team.
 
 ## License & Disclaimer
 
