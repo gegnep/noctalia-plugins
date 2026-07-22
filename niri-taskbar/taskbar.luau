@@ -16,7 +16,7 @@ local expanded = false
 -- inside it. Collapse therefore runs on a countdown: onHover(true) (fires
 -- again whenever the pointer crosses a gap between buttons) or any click
 -- cancels it. Cost: resting motionless on a button collapses after the
--- grace period — fixed properly by the v2 per-node-hover host patch.
+-- grace period — fixed properly by per-node hover (upstream #3470).
 local COLLAPSE_GRACE_MS = 1250 -- ~1.25s, was 5 ticks at the 250ms update interval; readSettings() overwrites from collapse_delay_ms
 local collapsePending = false
 local graceMs = 0
@@ -38,18 +38,19 @@ local FADE_SNAP_EPS = 0.02
 local currentIntervalMs = 250
 local RESYNC_MS = 30000 -- was resyncTicks < 120 at the 250ms interval
 
--- Per-chip hover (0008 host patch): latched true by the first per-node
--- hover event, which switches the widget from expand-all to per-workspace
--- expansion (the v4 behavior). Unpatched hosts never fire it, so the
--- widget-level onHover fallback above keeps working unchanged.
+-- Per-chip hover (upstream since the #3470 merge, 2026-07-21; was local
+-- patches 0008/0009): latched true by the first per-node hover event,
+-- which switches the widget from expand-all to per-workspace expansion
+-- (the v4 behavior). Older hosts never fire it, so the widget-level
+-- onHover fallback above keeps working unchanged.
 local perChipHover = false
 local expandedWsId = nil
--- Window tile currently under the pointer (per-window hoverWin callbacks,
--- 0008 patch) — drives the grey hover dot. nil when no tile is hovered.
+-- Window tile currently under the pointer (per-window hoverWin callbacks)
+-- — drives the grey hover dot. nil when no tile is hovered.
 local hoveredWindowId = nil
--- Workspace chip currently under the pointer (per-chip hoverChip callback,
--- needs the row/label onClick/onHover host patch — see chipFill/chipBorder
--- below) — drives the chip's hover fill/label swap. NOT the same signal as
+-- Workspace chip currently under the pointer (per-chip hoverChip callback
+-- — see chipFill/chipBorder below) — drives the chip's hover fill/label
+-- swap. NOT the same signal as
 -- expandedWsId: that stays set through the whole collapse grace period
 -- after the pointer has genuinely left the group, so it can't double as
 -- "pointer is on the chip right now." nil when no chip is hovered.
@@ -519,15 +520,17 @@ local function registerWorkspaceCallback(workspace)
   local wsName = "focusWs_" .. workspace.id
   registeredWorkspaceCallbacks[workspace.id] = wsName
 
-  -- Chip hover: the chip's OWN callback (needs the row/label onClick/
-  -- onHover host patch, 0009). This name used to be shared with window
-  -- tiles ("mousing chip to tile keeps the group alive") back when tiles
-  -- had no hover callback of their own; tiles now register their own
-  -- hoverWin_<id> (registerWindowCallback below) with an equivalent
-  -- group-keep-alive copy, so this name is chip-exclusive. The arg arrives
-  -- as the string "true"/"false" (toggle onChange convention). First event
-  -- latches perChipHover — on a host with only the 0008 (button/box/image)
-  -- patch but not 0009, this prop is ignored entirely (chip has no onHover
+  -- Chip hover: the chip's OWN callback (row/column onClick/onHover,
+  -- upstream since the #3470 merge, 2026-07-21). This name used to be
+  -- shared with window tiles ("mousing chip to tile keeps the group
+  -- alive") back when tiles had no hover callback of their own; tiles now
+  -- register their own hoverWin_<id> (registerWindowCallback below) with
+  -- an equivalent group-keep-alive copy, so this name is chip-exclusive.
+  -- The arg arrives as the string "true"/"false" (toggle onChange
+  -- convention); since upstream 0898220c4 a second arg carries the node
+  -- key (unused here), and the host itself fires "false" when the hovered
+  -- node is dropped or the tree resets. First event latches perChipHover —
+  -- a host older than #3470 ignores the prop entirely (chip has no onHover
   -- to latch from) and the widget-level expand-all fallback keeps working.
   env["hoverChip_" .. workspace.id] = function(state)
     perChipHover = true
@@ -977,8 +980,8 @@ end
 -- because ui.button was the only clickable+labeled leaf the reconciler
 -- exposed (box is a leaf with no children — ui_tree_reconciler.cpp:195-197
 -- drops children on any non-flex/non-scroll control). Now that ui.row/
--- ui.label carry onClick/onHover (the clickable-containers host patch,
--- 0009), the chip renders each role's fill/label-color pair DIRECTLY — more
+-- ui.label carry onClick/onHover (upstream #3470, merged 2026-07-21),
+-- the chip renders each role's fill/label-color pair DIRECTLY — more
 -- faithful to the native widget than a borrowed button preset ever was, and
 -- one less indirection to keep in sync with button.cpp's palettes.
 -- Precedence matches the native widget and the old chipVariant: urgent
@@ -1194,7 +1197,8 @@ end
 -- replaces the old border-cue-on-image / variant-cue-on-button focus
 -- indicators entirely — it is the ONE focus cue now, always mounted, fill
 -- explicit both ways (footgun #1). onClick/onHover live on the content leaf
--- (columns/rows aren't in kFlex's onClick/onHover set) — the dot is inert.
+-- so the wrapping column, its spacer, and the dot stay inert — the hit
+-- area is the icon or button, never the indicator chrome.
 -- titlesMode: "off" | "hover" | "always" (already vertical-adjusted by
 -- render()). "hover" shows the title only on the tile under the pointer.
 local function buildWindowTile(window, titlesMode)
@@ -1280,8 +1284,8 @@ end
 -- windowCount is the TRUE window count for the workspace (display "windows"
 -- label) — `windows` may be an emptied tile list under only_active_workspace.
 local function buildWorkspaceGroup(workspace, windows, occupied, titlesMode, windowCount)
-  -- This workspace's row is open when per-chip hover (0008 patch) has this
-  -- group hovered, or — fallback mode — when the whole widget is hovered.
+  -- This workspace's row is open when per-chip hover has this group
+  -- hovered, or — fallback mode — when the whole widget is hovered.
   local rowOpen
   if perChipHover then
     rowOpen = expandedWsId == workspace.id
@@ -1308,16 +1312,13 @@ local function buildWorkspaceGroup(workspace, windows, occupied, titlesMode, win
   -- clear on a retained node). Width is ALWAYS computed (perfect-circle for
   -- 1-char labels, capsule beyond that) — geometry comes entirely from
   -- width, not padding.
-  -- onClick/onHover need the row/label clickable-containers host patch
-  -- (0009, not yet upstreamed): unlike the old button chip, which degraded
-  -- gracefully to a square-but-clickable shape without 0007, an unpatched
-  -- reconciler here logs "has no prop, ignored" for onClick/onHover and the
+  -- onClick/onHover on a row are upstream since the #3470 merge
+  -- (2026-07-21; formerly local patches 0008/0009). On an OLDER host the
+  -- reconciler logs "has no prop, ignored" for onClick/onHover and the
   -- chip becomes INERT — it still renders styled and correctly shaped
-  -- (radius/fill/border need no patch), but clicking or hovering it does
-  -- nothing. That's a real regression versus the old degraded mode, traded
-  -- for a chip that finally matches the native widget's fill roles exactly;
-  -- widget-level onHover (expand-all fallback) is unaffected since it lives
-  -- on the top-level capsule, not the chip.
+  -- (radius/fill/border never needed a patch), but clicking or hovering it
+  -- does nothing. Widget-level onHover (expand-all fallback) is unaffected
+  -- since it lives on the top-level capsule, not the chip.
   local hoverName = "hoverChip_" .. workspace.id
   local chipHovered = hoveredWorkspaceChipId == workspace.id
   local chipTextValue = chipText(workspace, occupied, windowCount)
@@ -1439,7 +1440,8 @@ local function buildWorkspaceGroup(workspace, windows, occupied, titlesMode, win
 end
 
 render = function()
-  -- Own monitor by default (nil = all outputs on an unpatched host);
+  -- Own monitor by default (nil = all outputs on a host too old for
+  -- barWidget.outputName, upstream #3352);
   -- focused_output_only follows keyboard focus via stream state instead
   -- (WorkspaceActivated re-renders keep it live as focus moves).
   local outputFilter = ownOutput
