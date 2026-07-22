@@ -39,7 +39,7 @@ The widget targets niri only. It drives itself entirely off `niri msg
 - Four label modes (`display`): workspace id, name (falls back to id),
   window count, or a bare pill with no label
 - Per-workspace hover: hovering one chip expands only that chip, not every
-  chip on the bar (needs the row/column patch; see Requirements)
+  chip on the bar (needs a current Noctalia build; see Requirements)
 - Click a chip to focus its workspace. On a multi-monitor setup, this
   chains a focus-monitor call first, so cross-monitor chip clicks land
   correctly.
@@ -58,23 +58,21 @@ The widget targets niri only. It drives itself entirely off `niri msg
 ## Requirements
 
 - niri as the compositor.
-- A Noctalia v5 build. The widget runs on stock Noctalia, but looks and
-  behaves best with everything below available. Two capabilities shipped
-  upstream and need only a current build. The other two still need a
-  local patch from [`../noctalia-patches/`](../noctalia-patches); see that
-  directory's README for what each patch does and how to apply it.
+- A Noctalia v5 build from 2026-07-21 or later. Every capability the
+  widget uses now ships on upstream `main`; no local patch is needed. An
+  older build still runs the widget, degrading as the table describes.
 
-  | Capability | Adds | Without it |
+  | Capability | Adds | On an older build without it |
   |---|---|---|
-  | `barWidget.outputName` (upstream, merged [#3352](https://github.com/noctalia-dev/noctalia/pull/3352)) | Scopes the widget to its own monitor | Every instance shows all outputs' workspaces |
-  | `noctalia.appIconPath` (upstream, merged [#3356](https://github.com/noctalia-dev/noctalia/pull/3356)) | Native icon resolution for window tiles | Tiles fall back to an initial-letter glyph |
-  | 0009, row/column `onClick`/`onHover` (local patch, [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) open) | Workspace chips become clickable and hoverable: click to switch, hover to expand per workspace | Chips still render fully styled; row supports the chip geometry natively. They emit no click or hover of their own. The widget-level expand-all fallback still works. |
-  | 0008, `onHover` on button/box/image (local patch, [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) open) | Window-tile hover: grey hover dot, per-tile group-keep-alive | Window tiles lose their grey hover dot; chip hover (0009, above) is unaffected |
+  | `barWidget.outputName` (merged [#3352](https://github.com/noctalia-dev/noctalia/pull/3352)) | Scopes the widget to its own monitor | Every instance shows all outputs' workspaces |
+  | `noctalia.appIconPath` (merged [#3356](https://github.com/noctalia-dev/noctalia/pull/3356)) | Native icon resolution for window tiles | Tiles fall back to an initial-letter glyph |
+  | row/column `onClick`/`onHover` (merged [#3470](https://github.com/noctalia-dev/noctalia/pull/3470), 2026-07-21) | Workspace chips become clickable and hoverable: click to switch, hover to expand per workspace | Chips still render fully styled; row supports the chip geometry natively. They emit no click or hover of their own. The widget-level expand-all fallback still works. |
+  | `onHover` on button/box/image (merged [#3470](https://github.com/noctalia-dev/noctalia/pull/3470), 2026-07-21) | Window-tile hover: grey hover dot, per-tile group-keep-alive | Window tiles lose their grey hover dot; chip hover (above) is unaffected |
 
   The workspace chip used to be a `ui.button`, and needed a since-rejected
   patch (button radius/padding) for its shape. It's now a `ui.row` plus
-  `ui.label`, which has always supported that geometry with no patch at
-  all. Only its clickability now depends on a patch (0009, above).
+  `ui.label`, which has always supported that geometry natively. Its
+  clickability rides the merged #3470 capabilities above.
 
 ## Install
 
@@ -126,9 +124,9 @@ widget.
 
 - Labels auto-hide on very flat idle chips (high `chip_ratio`), since there
   is no room to render text.
-- Without the row/column patch (0009), hovering any chip expands all of
-  them, with a short collapse-grace fallback instead of true per-workspace
-  hover.
+- On a Noctalia build older than 2026-07-21 (no row/column `onClick`/
+  `onHover`), hovering any chip expands all of them, with a short
+  collapse-grace fallback instead of true per-workspace hover.
 - The 30-second resync only replaces state if nothing changed while it was
   in flight. A live event always wins over a stale snapshot.
 

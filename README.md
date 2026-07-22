@@ -38,18 +38,18 @@ chips expand on hover into a pill of real app-icon window tiles.
 
 ## Host Patches
 
-Both plugins depend on a small set of patches to Noctalia itself. Five
-patches add opt-in props or new bindings; 0009 also extends existing box
-and image clickables with keyboard activation. One (0005) fixes a
-MarkdownView measurement bug in the host. Of the original nine
-capabilities, three now ship on upstream `main`. Upstream rejected one in
-review, and patch 0009 replaces its approach. The rest sit in two open
-pull requests.
+claude-launcher depends on a small set of patches to Noctalia itself.
+Three add opt-in props or new bindings; one (0005) fixes a MarkdownView
+measurement bug in the host. They sit in one open pull request.
+
+niri-taskbar needs no patch anymore. Its container `onClick`/`onHover`
+capabilities merged upstream on 2026-07-21
+([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)); a current
+Noctalia build has everything the widget uses. The niri-taskbar README
+documents how the widget degrades on older builds.
 
 See **[`noctalia-patches/README.md`](./noctalia-patches/README.md)** for the
 full patch list, current upstream status, and how to apply them.
-claude-launcher requires its patches; the niri-taskbar README documents how
-that widget degrades on a stock, unpatched Noctalia build.
 
 ## Install
 
