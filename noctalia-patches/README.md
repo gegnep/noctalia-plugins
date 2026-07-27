@@ -53,7 +53,7 @@ GitHub status before rebasing or submitting a patch.
 
 | Patch(es) | PR | Status |
 |---|---|---|
-| 0001-0003, 0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` twice on 2026-07-20: first over the drag_source/drop_zone merge, where 0002's kScroll allowlist hunk conflicted, then over `3065b0567`, which obsoleted 0004. The branch is now four commits. It needs a `--force-with-lease` push before the PR diff matches these files again. |
+| 0001-0003, 0005 | [#3327](https://github.com/noctalia-dev/noctalia/pull/3327) | Open, awaiting review. Rebased onto `main` again on 2026-07-27, over the markdown/table-overflow and scroll-orientation rework (`df40cac49`). 0002 needed a real resolution: `doLayout` now recomputes `m_maxScrollOffset` per orientation branch, so the `wasAtBottom` capture moved above the branches. 0003 dropped its `meson.build` hunk; the test refactor links tests against `noctalia_core_dep`, which already builds `markdown_view.cpp`. The rebase also swapped the stale `Co-Authored-By` trailers on all four commits for `Assisted-by:` trailers. The branch needs a `--force-with-lease` push before the PR diff matches these files again. |
 | 0004 stream slot reaping | N/A | **Shipped upstream independently on 2026-07-20.** Commit `3065b0567` closes upstream [#3517](https://github.com/noctalia-dev/noctalia/issues/3517) and frees dead slots lazily at `startStream`, via an `alive` flag set by `onExit`. This is functionally equivalent for the plugins. Patch file deleted; commit dropped from #3327. |
 | 0007 button radius/padding | [#3355](https://github.com/noctalia-dev/noctalia/pull/3355) | **Rejected on 2026-07-14.** Maintainer feedback: buttons should stay cohesive; pills should be built from box/row. Patch file deleted; capability replaced by 0009. |
 | 0008 + 0009 | [#3470](https://github.com/noctalia-dev/noctalia/pull/3470) | **Merged on 2026-07-21** (squash `f7ff72f31`). Review changed the submission: the triplicated wrapper onClick/onHover wiring was deduplicated into one `syncWrapperCallbacks`, and hover got balance bookkeeping — the reconciler now closes an open hover itself (fires `"false"`) when the hovered node is dropped, rewired, or reset, and buttons clear stale hover handlers on removal. A same-day follow-up (`0898220c4`) tracks hover by node instead of callback name and passes the node's `key` to `onHover` as a second argument, so one handler can serve a whole keyed list. Patch files deleted. |
@@ -65,10 +65,11 @@ PRs are actually based against. Checking against `cachix` once let a real
 conflict slide. An unrelated upstream addition to `meson.build`'s test
 sources broke 0003's plain `git apply` context match. `git rebase`
 resolved it as a clean 3-way merge, with no manual work. The full sequence
-(0001-0003, 0005, in that order) was last verified against `main` at
-`44778c92d` on 2026-07-22, after the #3470 merge. Verification used GNU
-`patch -p1` in filename order, mirroring the nix patchPhase, in a
-throwaway worktree.
+(0001-0003, 0005, in that order) was last verified on 2026-07-27 against
+`main` at `2a4bd5788`, the exact source the nixos flake pins. Verification
+used GNU `patch -p1 --fuzz=0` in filename order, mirroring the nix
+patchPhase, on a copy of the pinned source; the result matched the rebased
+branch tree byte for byte.
 
 ## Patch Application
 
