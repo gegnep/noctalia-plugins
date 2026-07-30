@@ -9,7 +9,7 @@ author = "pengeg"
 license = "MIT"
 icon = "asterisk"
 description = "Streaming chat panel for Claude, backed by the Claude Code CLI (subscription auth). Not affiliated with Anthropic."
-plugin_api = 3
+plugin_api = 20
 tags = ["chat", "ai", "claude", "assistant"]
 
 [[plugin]]
