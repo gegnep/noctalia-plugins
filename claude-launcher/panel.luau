@@ -532,10 +532,10 @@ end
 -- Known model aliases -> display label + reasoning capability. Aliases the
 -- user adds beyond these get their raw alias as label and level-based effort.
 local MODEL_INFO = {
-  sonnet = { label = "Sonnet", effortKind = "levels", desc = "Balanced speed and capability for everyday work" },
-  opus = { label = "Opus", effortKind = "levels", desc = "Deep reasoning for complex, open-ended work" },
+  ["claude-sonnet-5"] = { label = "Sonnet", effortKind = "levels", desc = "Balanced speed and capability for everyday work" },
+  ["claude-opus-5"] = { label = "Opus", effortKind = "levels", desc = "Deep reasoning for complex, open-ended work" },
   haiku = { label = "Haiku", effortKind = "toggle", desc = "Fastest responses, streams its thinking" },
-  fable = { label = "Fable", effortKind = "levels", desc = "Most capable model for the hardest problems" },
+  ["claude-fable-5"] = { label = "Fable", effortKind = "levels", desc = "Most capable model for the hardest problems" },
 }
 local EFFORT_LEVELS = { "low", "medium", "high", "xhigh", "max" }
 local EFFORT_LABELS = { low = "Low", medium = "Medium", high = "High", xhigh = "X-High", max = "Max" }
@@ -545,7 +545,7 @@ function modelInfo(alias)
 end
 
 function availableModels()
-  return validStringList(noctalia.getConfig("models"), { "sonnet", "opus", "haiku", "fable" })
+  return validStringList(noctalia.getConfig("models"), { "claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5" })
 end
 
 -- Replaces the old "default" placeholder concept: there is always a concrete

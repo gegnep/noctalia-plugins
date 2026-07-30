@@ -116,8 +116,8 @@ terminal. Use New Chat to start fresh.
 |---|---|---|---|
 | `claude_command` | string | `claude` | Path or name of the claude binary (point at a wrapper to sandbox it) |
 | `transcripts_dir` | folder | *(empty)* | Claude projects dir used to reload past conversations; empty auto-derives from the workspace path (sandboxed claude wrappers must set this explicitly) |
-| `model` | select | `auto` (first in list) | Model new chats start with: `auto`, `sonnet`, `opus`, `haiku`, `fable` |
-| `models` | string_list | `["sonnet", "opus", "haiku", "fable"]` | Model aliases offered by the in-panel switcher |
+| `model` | select | `auto` (first in list) | Model new chats start with: `auto`, `claude-sonnet-5`, `claude-opus-5`, `haiku`, `claude-fable-5` |
+| `models` | string_list | `["claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5"]` | Model aliases offered by the in-panel switcher |
 | `effort` | select | `auto` (default/high) | Default reasoning level for new chats: `auto`, `low`, `medium`, `high`, `xhigh`, `max` |
 | `allow_tools` | bool | `false` | Off: claude runs with all tools disabled. On: claude's default tool behavior |
 
