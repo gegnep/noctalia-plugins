@@ -10,7 +10,7 @@ and share them here in case they help you too.
 - [Plugins](#plugins)
   - [claude-launcher](#claude-launcher)
   - [niri-taskbar](#niri-taskbar)
-- [Host Patches](#host-patches)
+- [Host Requirements](#host-requirements)
 - [Install](#install)
 - [Development](#development)
 - [Credits](#credits)
@@ -36,20 +36,20 @@ chips expand on hover into a pill of real app-icon window tiles.
 
 **[Full README](./niri-taskbar)**
 
-## Host Patches
+## Host Requirements
 
-claude-launcher depends on a small set of patches to Noctalia itself.
-Three add opt-in props or new bindings; one (0005) fixes a MarkdownView
-measurement bug in the host. They sit in one open pull request.
+Neither plugin needs a patched Noctalia anymore. Every host capability
+they use has merged upstream:
 
-niri-taskbar needs no patch anymore. Its container `onClick`/`onHover`
-capabilities merged upstream on 2026-07-21
-([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)); a current
-Noctalia build has everything the widget uses. The niri-taskbar README
-documents how the widget degrades on older builds.
+- claude-launcher: chat-style input submit, follow-scroll, and the
+  `ui.markdown` node merged on 2026-07-30 as plugin API 21
+  ([#3327](https://github.com/noctalia-dev/noctalia/pull/3327)).
+- niri-taskbar: container `onClick`/`onHover` merged on 2026-07-21
+  ([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)).
 
-See **[`noctalia-patches/README.md`](./noctalia-patches/README.md)** for the
-full patch list, current upstream status, and how to apply them.
+claude-launcher declares `plugin_api = 21` and refuses to load on older
+builds. niri-taskbar loads on older builds but degrades; its README
+documents how.
 
 ## Install
 

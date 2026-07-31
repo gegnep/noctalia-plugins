@@ -53,15 +53,11 @@ trademark of Anthropic PBC.*
 
 ## Requirements
 
-- A Noctalia v5 build that includes the plugin-UI patches from
+- A Noctalia v5 build with plugin API 21 or newer, i.e. one that includes
   [noctalia-dev/noctalia#3327](https://github.com/noctalia-dev/noctalia/pull/3327)
-  (open, awaiting review). Until that lands, apply them locally. See
-  [`../noctalia-patches/`](../noctalia-patches) for what each patch adds and
-  how to apply them.
+  (merged 2026-07-30). The manifest declares `plugin_api = 21`; older
+  hosts refuse to load the plugin.
 - The `claude` CLI (Claude Code), logged into a Pro/Max subscription.
-
-The plugin assumes a build with these patches; it has no stock-build
-fallback.
 
 Auth follows whatever `claude_command` actually runs. A sandboxed or
 bwrapped `claude` wrapper works too. In that case, set the **Transcripts
