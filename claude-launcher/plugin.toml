@@ -1,7 +1,7 @@
 id = "gegnep/claude-launcher"
 name = "Claude Launcher"
 version = "0.1.0"
-plugin_api = 20
+plugin_api = 21
 author = "pengeg"
 license = "MIT"
 icon = "asterisk"
