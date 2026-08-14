@@ -184,6 +184,12 @@ noctalia = {
   readFile = function(path)
     return nil, "harness: no filesystem"
   end,
+  readFileAsync = function(path, cb)
+    -- Host contract: callback gets (contents, nil) or (nil, err) on the
+    -- runtime thread. The harness delivers synchronously.
+    cb(nil, "harness: no filesystem")
+    return true
+  end,
   writeFile = function(path, contents)
     return true
   end,

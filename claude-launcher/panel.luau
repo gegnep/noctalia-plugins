@@ -28,6 +28,9 @@ local msgCounter = 0
 local sessionId = nil
 local streaming = false
 local activeStreamId = 0
+-- Bumped on every chat open; an async transcript read landing after a newer
+-- open (or after the user already sent) compares against it and drops itself.
+local transcriptGen = 0
 local deltaCount = 0
 local diagBuffer = {}
 local lastLineAt = 0
@@ -798,35 +801,59 @@ local function openChatCallback(chat)
     renameBuffer = ""
     pendingDeleteChatId = nil
     modelPickerOpen = false
+    transcriptGen = transcriptGen + 1
+    local myGen = transcriptGen
     local ok, err = pcall(function()
       local path = transcriptsDir() .. "/" .. chat.id .. ".jsonl"
       local info = noctalia.fileInfo(path)
-      if info ~= nil and not info.isDir then
-        if info.size < 131072 then
-          local content = noctalia.readFile(path)
-          if type(content) == "string" then
-            local t0 = os.clock()
-            messages = parseTranscript(content, "hist-" .. chat.id:sub(1, 8))
-            msgCounter = #messages
-            noctalia.log(string.format(
-              "Claude launcher: transcript reload size=%d bytes parse_ms=%.3f",
-              info.size,
-              (os.clock() - t0) * 1000
-            ))
-          end
-        else
-          messages = {
-            {
-              role = "assistant",
-              text = "(history too large to reload - the conversation continues from here)",
-              thinking = "",
-              thinkingOpen = false,
-              status = "done",
-              key = "hist-" .. chat.id:sub(1, 8) .. "-1",
-            },
-          }
-          msgCounter = #messages
+      if info == nil or info.isDir then
+        return
+      end
+      if info.size >= 131072 then
+        messages = {
+          {
+            role = "assistant",
+            text = "(history too large to reload - the conversation continues from here)",
+            thinking = "",
+            thinkingOpen = false,
+            status = "done",
+            key = "hist-" .. chat.id:sub(1, 8) .. "-1",
+          },
+        }
+        msgCounter = #messages
+        return
+      end
+      -- Async read (readFileAsync, API 23): the contents land on a later
+      -- tick, so the callback re-checks that this open is still current and
+      -- that no live message arrived meanwhile — live conversation always
+      -- wins over a cosmetic history reload.
+      local started = noctalia.readFileAsync(path, function(content, readErr)
+        if myGen ~= transcriptGen or sessionId ~= chat.id or #messages > 0 then
+          return
         end
+        if type(content) ~= "string" then
+          noctalia.log("Claude launcher: transcript reload failed: " .. tostring(readErr))
+          return
+        end
+        local okParse, parseErr = pcall(function()
+          local t0 = os.clock()
+          messages = parseTranscript(content, "hist-" .. chat.id:sub(1, 8))
+          msgCounter = #messages
+          noctalia.log(string.format(
+            "Claude launcher: transcript reload size=%d bytes parse_ms=%.3f",
+            #content,
+            (os.clock() - t0) * 1000
+          ))
+        end)
+        if not okParse then
+          noctalia.log("Claude launcher: transcript reload failed: " .. tostring(parseErr))
+          messages = {}
+          msgCounter = 0
+        end
+        render()
+      end)
+      if not started then
+        noctalia.log("Claude launcher: transcript reload skipped (async read slots busy)")
       end
     end)
     if not ok then
