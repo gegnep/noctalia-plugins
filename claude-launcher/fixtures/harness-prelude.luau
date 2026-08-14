@@ -199,6 +199,21 @@ noctalia = {
   expandPath = function(path)
     return path
   end,
+  fileInfo = function(path)
+    return nil -- no filesystem, matches the readFile stub
+  end,
+  formatTime = function(fmt, ts)
+    return "Jan 01 00:00"
+  end,
+  copyToClipboard = function(text)
+    return true
+  end,
+  removeFile = function(path)
+    return true
+  end,
+  runInTerminal = function(cmd)
+    return true
+  end,
   getConfig = function(key)
     return nil
   end,
