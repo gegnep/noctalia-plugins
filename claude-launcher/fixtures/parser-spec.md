@@ -1,8 +1,42 @@
 # handleLine parser spec (Phase 3)
 
 State machine for `handleLine(streamId, line)` in `panel.luau`. Derived from the
-empirical dumps in this directory (`claude` CLI v2.1.201, 2026-07-07) — see repo
-CLAUDE.md: never extend this parser from assumed schema; re-dump instead.
+empirical dumps in this directory, which were captured from `claude` CLI
+v2.1.201 on 2026-07-07. The installed CLI is v2.1.278 (2026-09-19) and the dumps
+have NOT been re-captured against it — see repo CLAUDE.md: never extend this
+parser from assumed schema; re-dump instead.
+
+## Pending re-dump (doc-derived, UNVERIFIED)
+
+The Anthropic docs describe three additions since v2.1.201. None of them is
+confirmed against a real dump, so none of them has changed a line of parser
+code. The parser already survives all three: `system` is routed by subtype with
+an ignore fallthrough, and unknown top-level types are ignored with one debug
+log. Treat every line here as a hypothesis until a dump proves it.
+
+- `system` / `api_retry` — emitted before a retryable API failure is retried.
+  Reported fields: `attempt`, `max_retries`, `retry_delay_ms`, `error_status`,
+  `error` (a category string such as `rate_limit` or `overloaded`), `uuid`,
+  `session_id`, plus an optional `no_response` object on v2.1.261+. If it is
+  real, it is a free liveness signal for the 20s watchdog, which currently
+  cannot tell a rate-limit retry from a dead stream.
+- `system` / `plugin_install` — only when `CLAUDE_CODE_SYNC_PLUGIN_INSTALL` is
+  set. Not our case.
+- `system` / `init` gained an optional `capabilities` array (v2.1.205+) for
+  feature detection, plus `plugins`, `plugin_errors`, `mcp_servers` and
+  `mcp_server_errors`.
+
+Re-dump from a real, authenticated shell (this cannot run from an agent
+sandbox: no credentials, no egress to the API):
+
+```sh
+claude -p 'say ok' --output-format stream-json --verbose \
+  --include-partial-messages --model claude-sonnet-5 --tools '' \
+  --max-turns 1 > dump.jsonl
+```
+
+Replace the fixture dumps from that output, then update this spec from what the
+dump actually contains.
 
 ## Contract
 

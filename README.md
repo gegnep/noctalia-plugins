@@ -47,9 +47,9 @@ they use has merged upstream:
 - niri-taskbar: container `onClick`/`onHover` merged on 2026-07-21
   ([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)).
 
-claude-launcher declares `plugin_api = 21` and refuses to load on older
-builds. niri-taskbar loads on older builds but degrades; its README
-documents how.
+claude-launcher has moved on since then: it declares `plugin_api = 28`
+(panel context menus, merged 2026-09) and refuses to load on older builds.
+niri-taskbar loads on older builds but degrades; its README documents how.
 
 ## Install
 
@@ -79,8 +79,9 @@ ln -sfn "$PWD/niri-taskbar" ~/.local/share/noctalia/plugins/niri-taskbar
 nix develop   # or let direnv load it automatically
 ```
 
-The devshell provides `luau`, `jq`, `fd`, and `ripgrep`: everything each
-plugin's fixture harness needs. No running Noctalia instance is required.
+The devshell provides `luau`, `jq`, `fd`, `ripgrep`, and `python3`:
+everything each plugin's fixture harness and the catalog generator need. No
+running Noctalia instance is required.
 
 ```sh
 noctalia plugins lint   # lint all plugin manifests and Luau sources

@@ -37,6 +37,8 @@ trademark of Anthropic PBC.*
 - Model and reasoning effort lock once a conversation starts, and restore
   automatically when you reopen it later
 - Chat history with rename; renamed chats carry a small pencil marker
+- Right-click a history entry for a native menu with the same actions as its
+  inline buttons
 - Two-step confirm before a history entry is deleted
 - Continue any past chat in a terminal via `claude --resume`
 - Past conversations reload their transcript from disk, so history is more
@@ -53,10 +55,12 @@ trademark of Anthropic PBC.*
 
 ## Requirements
 
-- A Noctalia v5 build with plugin API 21 or newer, i.e. one that includes
+- A Noctalia v5 build with plugin API 28 or newer, i.e. one that includes
+  panel context menus (merged 2026-09). The plugin's chat UI itself landed
+  with
   [noctalia-dev/noctalia#3327](https://github.com/noctalia-dev/noctalia/pull/3327)
-  (merged 2026-07-30). The manifest declares `plugin_api = 21`; older
-  hosts refuse to load the plugin.
+  on 2026-07-30 as API 21, but the manifest now declares `plugin_api = 28`;
+  older hosts refuse to load the plugin.
 - The `claude` CLI (Claude Code), logged into a Pro/Max subscription.
 
 Auth follows whatever `claude_command` actually runs. A sandboxed or
@@ -95,7 +99,8 @@ noctalia msg panel-toggle gegnep/claude-launcher:chat
 In the panel: type in the composer and send. Switch model and reasoning
 effort before your first message; both lock afterward. Open History from
 the header to reload, rename, delete, or continue a past chat in a
-terminal. Use New Chat to start fresh.
+terminal. Right-click a history entry for the same actions in a native
+menu. Use New Chat to start fresh.
 
 ![claude-launcher model and reasoning picker open](./screenshots/model-picker.png)
 ![claude-launcher chat history with rename, delete, and terminal actions](./screenshots/history.png)
@@ -112,8 +117,8 @@ terminal. Use New Chat to start fresh.
 |---|---|---|---|
 | `claude_command` | string | `claude` | Path or name of the claude binary (point at a wrapper to sandbox it) |
 | `transcripts_dir` | folder | *(empty)* | Claude projects dir used to reload past conversations; empty auto-derives from the workspace path (sandboxed claude wrappers must set this explicitly) |
-| `model` | select | `auto` (first in list) | Model new chats start with: `auto`, `claude-sonnet-5`, `claude-opus-5`, `haiku`, `claude-fable-5` |
-| `models` | string_list | `["claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5"]` | Model aliases offered by the in-panel switcher |
+| `model` | select | `auto` (first in list) | Model new chats start with: `auto`, `claude-sonnet-5`, `claude-opus-5`, `haiku`, `claude-fable-5-1`, `claude-fable-5` |
+| `models` | string_list | `["claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5-1", "claude-fable-5"]` | Model aliases offered by the in-panel switcher |
 | `effort` | select | `auto` (default/high) | Default reasoning level for new chats: `auto`, `low`, `medium`, `high`, `xhigh`, `max` |
 | `allow_tools` | bool | `false` | Off: claude runs with all tools disabled. On: claude's default tool behavior |
 

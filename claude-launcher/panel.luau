@@ -304,7 +304,7 @@ local availableModels
 local effectiveModel
 local effectiveEffort
 
--- Flags verified against claude --help 2026-07-07 (CLI v2.1.201); dedicated
+-- Flags verified against claude --help 2026-09-19 (CLI v2.1.278); dedicated
 -- workspace cwd keeps Claude's per-project state out of the user's home.
 local function buildCommand(prompt, uuid, resume)
   local cmd = claudeCommand()
