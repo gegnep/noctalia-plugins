@@ -39,7 +39,7 @@ The widget targets niri only. It drives itself entirely off `niri msg
 - Four label modes (`display`): workspace id, name (falls back to id),
   window count, or a bare pill with no label
 - Per-workspace hover: hovering one chip expands only that chip, not every
-  chip on the bar (needs a current Noctalia build; see Requirements)
+  chip on the bar
 - Click a chip to focus its workspace. On a multi-monitor setup, this
   chains a focus-monitor call first, so cross-monitor chip clicks land
   correctly.
@@ -47,13 +47,11 @@ The widget targets niri only. It drives itself entirely off `niri msg
   column and window position, not arrival order
 - Scoped to its own monitor by default. Optionally scopes to the
   compositor's focused monitor instead, regardless of which bar instance
-  you're looking at (`focused_output_only`, needs `barWidget.outputName`,
-  shipped upstream; see Requirements)
+  you're looking at (`focused_output_only`)
 - Live via `niri msg --json event-stream`. The widget also resyncs every
   30 seconds to recover from any missed event.
-- Real app icons resolved through Noctalia's own icon machinery (needs
-  `noctalia.appIconPath`, shipped upstream), falling back to an
-  initial-letter tile otherwise
+- Real app icons resolved through Noctalia's own icon machinery, falling
+  back to an initial-letter tile when an app has no resolvable icon
 - Hovering a window tile shows a native tooltip with that window's full
   title. It is additive: the `window_titles` setting below still controls
   the inline title text, which stays truncated. The tooltip never is.
