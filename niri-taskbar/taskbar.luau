@@ -1205,16 +1205,26 @@ end
 -- title rides on the interactive LEAF only — the ui.image icon or the
 -- ui.button letter fallback. Two rules hold it there:
 --   * it is ALWAYS a string, never conditionally omitted. The reconciler does
---     clear an empty/absent tooltip (ui_tree_reconciler.cpp:900-908, the one
---     documented exception to footgun #1), but a prop that comes and goes is
---     the habit that breaks the next node, so "" is passed explicitly.
---   * it never goes on the wrapping body row, the indicator column, or the
---     chip. Those carry no onClick/onHover, so a tooltip there would newly
---     satisfy wantsInputAreaWrapper (:373-380) and wrap them in an InputArea,
---     changing which node the hover dispatcher considers innermost and
---     breaking the hoverWin_<id> group-keep-alive. The leaf is already
---     wrapped (it has both callbacks), so adding tooltip to it flips no
---     predicate and forces no recreation.
+--     clear an empty/absent tooltip (ui_tree_reconciler.cpp:900-908 for the
+--     wrapper path, :1481-1484 for Button — the one documented exception to
+--     footgun #1), but a prop that comes and goes is the habit that breaks
+--     the next node, so "" is passed explicitly.
+--   * neither leaf can gain or lose an InputArea wrapper by carrying it.
+--     The image already sets onClick and onHover, so wantsInputAreaWrapper
+--     (:373-380) was already true and the added prop cannot flip it. The
+--     button is not wrappable at all — wrappableType() is box/image/row/
+--     column/graph only (:366-368), so clickableWrapMismatch returns false
+--     for it and the host builds a native Button that owns its own input
+--     handling (:718-719).
+--   * it does NOT go on the wrapping body row or the indicator column.
+--     Those carry no onClick/onHover, so a tooltip there would flip
+--     wantsInputAreaWrapper false->true, and a flipped predicate is a
+--     recreation (:382-388) — the node cannot be reused. A new InputArea
+--     around a tile would also enter the hover dispatcher's innermost-node
+--     calculation, which is what hoverWin_<id> group-keep-alive depends on.
+--     (The workspace CHIP is a different case: it sets both callbacks
+--     already. It has no tooltip because its label is the text a tooltip
+--     would repeat, not because of the predicate.)
 -- It is ADDITIVE to window_titles: inline titles stay truncated at 12 chars,
 -- the tooltip always carries the whole thing.
 local function buildWindowTile(window, titlesMode)

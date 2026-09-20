@@ -64,10 +64,12 @@ The widget targets niri only. It drives itself entirely off `niri msg
   containers and images) or any later build. Every capability the widget
   uses ships upstream; no local patch is needed.
 
-  The manifest declares `plugin_api = 32`, so an older host refuses the
-  plugin cleanly at manifest parse rather than loading it in a degraded
-  state. If the widget does not appear in Settings, Bar, the host is too
-  old — update Noctalia.
+  The manifest declares `plugin_api = 32`. An older host reads the
+  manifest, finds the declared floor above what it supports, and rejects
+  the plugin on that compatibility check rather than loading it in a
+  degraded state. If the widget does not appear in Settings, Bar, check
+  that the plugin is enabled first; if it is, the host is too old, so
+  update Noctalia.
 
   The workspace chip used to be a `ui.button`, and needed a since-rejected
   patch (button radius/padding) for its shape. It's now a `ui.row` plus
@@ -127,12 +129,14 @@ widget.
   in flight. A live event always wins over a stale snapshot.
 - The bar's `font_scale` setting (bar-level or per-widget) scales text but
   not geometry, and a plugin cannot read its value. Workspace chip labels
-  are therefore sized for `font_scale = 1.0`: above 1.0 a multi-character
-  label can ellipsize inside a chip that has room, and below 1.0 it floats
-  in a chip that is wider than it needs. Single-character labels — the
-  default, since `max_label_chars` is 1 and workspace ids are numeric —
-  are unaffected. If you run a non-default `font_scale` with
-  `display = "name"`, raise `chip_size` to compensate.
+  are therefore sized for `font_scale = 1.0`: above 1.0 a label can
+  ellipsize inside a chip that looks like it has room, and below 1.0 it
+  floats in a chip that is wider than it needs. The effect grows with
+  label length, so it shows up first with `display = "name"`. The default
+  is a single character (`max_label_chars` is 1, and workspace ids are
+  numeric), where the chip is a circle whose width has the most slack, so
+  it takes a larger `font_scale` to become visible there. If you run a
+  non-default `font_scale`, raise `chip_size` to compensate.
 - Window tile titles are not affected by the above: the inline title has no
   width cap of its own, and the tooltip always carries the full text.
 
