@@ -43,6 +43,7 @@ options = [
   { value = "claude-sonnet-5", label_key = "settings.model.options.sonnet" },
   { value = "claude-opus-5", label_key = "settings.model.options.opus" },
   { value = "haiku", label_key = "settings.model.options.haiku" },
+  { value = "claude-fable-5-1", label_key = "settings.model.options.fable51" },
   { value = "claude-fable-5", label_key = "settings.model.options.fable" },
 ]
 
@@ -51,7 +52,7 @@ key = "models"
 type = "string_list"
 label_key = "settings.models.label"
 description_key = "settings.models.description"
-default = ["claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5"]
+default = ["claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5-1", "claude-fable-5"]
 
 [[setting]]
 key = "effort"

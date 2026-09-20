@@ -4,6 +4,8 @@
 
 CAPTURED_ONLINE = nil
 HARNESS_LOGS = {}
+HARNESS_LAST_TREE = nil
+HARNESS_CONTEXT_MENU = nil
 
 -- Minimal JSON decoder (objects, arrays, strings, numbers, true/false/null).
 -- Covers exactly the shapes in the fixture dumps; null decodes to nil.
@@ -161,6 +163,13 @@ end
 panel = {
   render = function(tree)
     assert(type(tree) == "table" and tree.type ~= nil, "panel.render: bad tree")
+    HARNESS_LAST_TREE = tree
+  end,
+  -- API 28. The host returns false (no raise) when no live pointer callback
+  -- is active; the harness always has one, so it records and returns true.
+  openContextMenu = function(request)
+    HARNESS_CONTEXT_MENU = request
+    return true
   end,
   setWantsSecondTicks = function(_) end,
   getConfig = function(_) return nil end,
