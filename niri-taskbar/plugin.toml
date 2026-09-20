@@ -1,7 +1,7 @@
 id = "gegnep/niri-taskbar"
 name = "Niri Taskbar"
 version = "0.1.0"
-plugin_api = 3
+plugin_api = 32
 author = "pengeg"
 license = "MIT"
 icon = "layout-grid"
