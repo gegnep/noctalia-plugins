@@ -54,25 +54,26 @@ The widget targets niri only. It drives itself entirely off `niri msg
 - Real app icons resolved through Noctalia's own icon machinery (needs
   `noctalia.appIconPath`, shipped upstream), falling back to an
   initial-letter tile otherwise
+- Hovering a window tile shows a native tooltip with that window's full
+  title. It is additive: the `window_titles` setting below still controls
+  the inline title text, which stays truncated. The tooltip never is.
 
 ## Requirements
 
 - niri as the compositor.
-- A Noctalia v5 build from 2026-07-21 or later. Every capability the
-  widget uses now ships on upstream `main`; no local patch is needed. An
-  older build still runs the widget, degrading as the table describes.
+- A Noctalia v5 build at **plugin API 32 or newer** — upstream `main` from
+  2026-09-13 (commit `5d66d1188`, which extended the `tooltip` prop to
+  containers and images) or any later build. Every capability the widget
+  uses ships upstream; no local patch is needed.
 
-  | Capability | Adds | On an older build without it |
-  |---|---|---|
-  | `barWidget.outputName` (merged [#3352](https://github.com/noctalia-dev/noctalia/pull/3352)) | Scopes the widget to its own monitor | Every instance shows all outputs' workspaces |
-  | `noctalia.appIconPath` (merged [#3356](https://github.com/noctalia-dev/noctalia/pull/3356)) | Native icon resolution for window tiles | Tiles fall back to an initial-letter glyph |
-  | row/column `onClick`/`onHover` (merged [#3470](https://github.com/noctalia-dev/noctalia/pull/3470), 2026-07-21) | Workspace chips become clickable and hoverable: click to switch, hover to expand per workspace | Chips still render fully styled; row supports the chip geometry natively. They emit no click or hover of their own. The widget-level expand-all fallback still works. |
-  | `onHover` on button/box/image (merged [#3470](https://github.com/noctalia-dev/noctalia/pull/3470), 2026-07-21) | Window-tile hover: grey hover dot, per-tile group-keep-alive | Window tiles lose their grey hover dot; chip hover (above) is unaffected |
+  The manifest declares `plugin_api = 32`, so an older host refuses the
+  plugin cleanly at manifest parse rather than loading it in a degraded
+  state. If the widget does not appear in Settings, Bar, the host is too
+  old — update Noctalia.
 
   The workspace chip used to be a `ui.button`, and needed a since-rejected
   patch (button radius/padding) for its shape. It's now a `ui.row` plus
-  `ui.label`, which has always supported that geometry natively. Its
-  clickability rides the merged #3470 capabilities above.
+  `ui.label`, which has always supported that geometry natively.
 
 ## Install
 
@@ -106,7 +107,7 @@ widget.
 | `focused_output_only` | bool | `false` | Show only the focused monitor's workspaces instead of this monitor's |
 | `show_empty_workspaces` | bool | `true` | Show chips for workspaces with no windows (the active workspace is always shown) |
 | `display` | select | `id` | What each chip shows: the workspace index (`id`), its name falling back to the index (`name`), its window count (`windows`), or a bare pill (`none`) |
-| `window_titles` | select | `off` | Truncated window title next to tiles: `off`, `hover` (only the tile under the pointer), or `always` (forced off in a vertical/side bar) |
+| `window_titles` | select | `off` | Truncated window title next to tiles: `off`, `hover` (only the tile under the pointer), or `always` (forced off in a vertical/side bar). Optional now that every tile has a native full-title tooltip; the inline title costs pill width, the tooltip costs none. |
 | `max_windows_per_workspace` | int | `10` | Cap on expanded window tiles per workspace before collapsing the rest into a `+N` label. Range 1-30. |
 | `labels_only_when_occupied` | bool | `false` | Hide the label on empty, inactive workspace chips, leaving a bare pill |
 | `max_label_chars` | int | `1` | Truncate workspace name labels to this many characters (purely numeric labels are never truncated). Range 1-20. |
@@ -124,11 +125,18 @@ widget.
 
 - Labels auto-hide on very flat idle chips (high `chip_ratio`), since there
   is no room to render text.
-- On a Noctalia build older than 2026-07-21 (no row/column `onClick`/
-  `onHover`), hovering any chip expands all of them, with a short
-  collapse-grace fallback instead of true per-workspace hover.
 - The 30-second resync only replaces state if nothing changed while it was
   in flight. A live event always wins over a stale snapshot.
+- The bar's `font_scale` setting (bar-level or per-widget) scales text but
+  not geometry, and a plugin cannot read its value. Workspace chip labels
+  are therefore sized for `font_scale = 1.0`: above 1.0 a multi-character
+  label can ellipsize inside a chip that has room, and below 1.0 it floats
+  in a chip that is wider than it needs. Single-character labels — the
+  default, since `max_label_chars` is 1 and workspace ids are numeric —
+  are unaffected. If you run a non-default `font_scale` with
+  `display = "name"`, raise `chip_size` to compensate.
+- Window tile titles are not affected by the above: the inline title has no
+  width cap of its own, and the tooltip always carries the full text.
 
 ## Development
 
