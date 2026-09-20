@@ -1120,6 +1120,12 @@ local function composer()
         submitOnEnter = true,
         height = COMPOSER_BASE_HEIGHT + (composerLines - 1) * COMPOSER_LINE_HEIGHT,
         enabled = true,
+        -- API 27. Stated explicitly rather than left to the host default: the
+        -- reconciler applies frameVisible only when the prop is present, so an
+        -- omitted value would let a retained keyed input carry a stale frame.
+        -- The composer's parent column draws no surface of its own, so the
+        -- input's own frame is the only thing marking it as a text field.
+        frameVisible = true,
         onChange = "onComposerChanged",
         onSubmit = "onSubmit",
       }),

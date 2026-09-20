@@ -58,6 +58,16 @@ local fableButton = findNode(HARNESS_LAST_TREE, function(node)
 end)
 assert(fableButton ~= nil, "model picker has no Fable 5.1 row")
 onToggleModelPicker()
+
+-- 3. The composer input pins its frame explicitly (the reconciler applies
+--    frameVisible only when present, so it must never be omitted).
+local composerInput = findNode(HARNESS_LAST_TREE, function(node)
+  return node.type == "input" and node.props.placeholder ~= nil
+end)
+assert(composerInput ~= nil, "composer input not found in the tree")
+assert(composerInput.props.frameVisible == true,
+  "composer input must pass frameVisible explicitly, got " .. tostring(composerInput.props.frameVisible))
+
 -- 4. A history row's title button wires onRightClick to a registered global
 --    that opens a native context menu carrying the chat id as context.
 historyIndex = { version = 1, chats = { {
