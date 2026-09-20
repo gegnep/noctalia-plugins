@@ -102,34 +102,64 @@ assert(request.onActivate == "onChatMenuAction",
 assert(request.context == chat.id, "context must carry the chat id")
 assert(type(request.items) == "table" and #request.items >= 3, "menu needs at least three entries")
 
-local ids, enabledCount = {}, 0
+-- Count by KIND, not by "has an id": a header or separator that grew an id
+-- must not be mistaken for an enabled action. The prelude stub already
+-- enforces the host's own validation rules, so a malformed request raises
+-- before it gets here.
+local ids, enabledActions, headers = {}, 0, 0
 for _, item in ipairs(request.items) do
-  if item.id ~= nil then
+  local kind = item.kind or "item"
+  if kind == "item" then
+    assert(type(item.label) == "string" and item.label ~= "",
+      "action '" .. tostring(item.id) .. "' has no label")
+    assert(ids[item.id] == nil, "duplicate action id: " .. tostring(item.id))
     ids[item.id] = true
     if item.enabled ~= false then
-      enabledCount += 1
+      enabledActions += 1
     end
+  elseif kind == "header" then
+    headers += 1
   end
 end
 assert(ids.rename and ids.terminal and ids.delete,
   "menu must offer rename, terminal and delete")
-assert(enabledCount >= 1, "openContextMenu raises unless one action is enabled")
+assert(enabledActions >= 1, "openContextMenu raises unless one action is enabled")
+assert(headers == 1, "the menu should name the chat exactly once")
 
 -- 5. Menu actions drive the EXISTING state machine: rename opens the inline
---    editor, delete only ARMS the two-step confirm (never deletes outright).
-onChatMenuAction("rename", chat.id)
+--    editor, delete only ARMS the two-step confirm (never deletes outright),
+--    and each CLEARS the other's pending state. Dispatch the way the host
+--    does, through the global named by onActivate with the request's context,
+--    so a renamed callback or a wrong context is caught here.
+local activate = getfenv()[request.onActivate]
+assert(type(activate) == "function", "onActivate names an unregistered global")
+
+-- Rename while a delete is already armed: the confirm must be disarmed, or the
+-- row would render an editor and a "delete?" prompt at the same time.
+pendingDeleteChatId = chat.id
+renamingChatId = nil
+renameBuffer = ""
+activate("rename", request.context)
 assert(renamingChatId == chat.id, "rename action did not open the inline editor")
 assert(renameBuffer == chat.title, "rename action did not seed the rename buffer")
+assert(pendingDeleteChatId == nil, "rename must disarm a pending delete confirm")
+
+-- Delete while a rename editor is open: the editor must close.
+activate("delete", request.context)
+assert(pendingDeleteChatId == chat.id, "delete action did not arm the inline confirm")
+assert(renamingChatId == nil, "delete must close an open rename editor")
+assert(#historyIndex.chats == 1, "delete action must not remove the chat outright")
+
+-- Repeating the menu action still only ARMS it; only onConfirmDeleteChat
+-- actually deletes.
+activate("delete", request.context)
+assert(#historyIndex.chats == 1, "a repeated delete action must not delete")
+pendingDeleteChatId = nil
 renamingChatId = nil
 renameBuffer = ""
 
-onChatMenuAction("delete", chat.id)
-assert(pendingDeleteChatId == chat.id, "delete action did not arm the inline confirm")
-assert(#historyIndex.chats == 1, "delete action must not remove the chat outright")
-pendingDeleteChatId = nil
-
-onChatMenuAction("no-such-action", chat.id)
-onChatMenuAction("delete", "no-such-chat")
+activate("no-such-action", request.context)
+activate("delete", "no-such-chat")
 assert(pendingDeleteChatId == nil, "an unknown chat id must be a no-op")
 
 -- 6. Every string the host validates must be clamped: openContextMenu raises
@@ -154,5 +184,20 @@ assert(type(longLabel) == "string" and #longLabel <= 512,
 local emptyLabel = headerLabelFor("   ")
 assert(type(emptyLabel) == "string" and #emptyLabel >= 1,
   "a blank title must fall back to a non-empty header label")
+
+-- The host counts BYTES, so a naive cut splits a multibyte character: 171 "€"
+-- is 513 bytes, and cutting at 512 leaves two orphaned continuation bytes.
+-- Every byte of the clamped label must belong to a complete sequence.
+local euro = "\226\130\172" -- U+20AC, 3 bytes
+local multibyteLabel = headerLabelFor(string.rep(euro, 171))
+assert(type(multibyteLabel) == "string" and #multibyteLabel <= 512,
+  "multibyte header label must be clamped to 512 bytes")
+assert(#multibyteLabel % 3 == 0,
+  "clamped label split a 3-byte character: " .. #multibyteLabel .. " bytes")
+local trailing = string.byte(multibyteLabel, #multibyteLabel)
+assert(trailing ~= nil and trailing >= 128 and trailing < 192,
+  "the clamped label should end on a continuation byte of a COMPLETE sequence")
+-- And the cut must not be so eager that it throws the label away.
+assert(#multibyteLabel >= 510, "clamp discarded more than one character")
 
 print("UI DRY-RUN OK  models=" .. #models .. "  menuItems=" .. #request.items)

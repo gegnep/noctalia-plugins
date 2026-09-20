@@ -930,9 +930,10 @@ local function deleteChatCallback(chat)
 end
 
 -- Right-click accelerator for the row's inline controls (API 28). Every entry
--- drives the SAME state transition its inline button drives: rename opens the
--- inline editor (a native menu cannot host a text input) and delete only ARMS
--- the two-step confirm. The menu never deletes anything outright.
+-- lands in the same state the inline button lands in: rename opens the inline
+-- editor (a native menu cannot host a text input) and delete only ARMS the
+-- two-step confirm. The menu never deletes anything outright. It is slightly
+-- stricter than the buttons, which do not clear each other's pending state.
 --
 -- panel.openContextMenu is only honoured from a live pointer callback and
 -- returns false otherwise (no raise), so the return value is ignored. It DOES
@@ -943,6 +944,10 @@ end
 -- breaker (5 hard errors/60s), so every string the host validates is clamped
 -- first. The host requires 1..512 bytes for a label: derived titles are capped
 -- at 60 chars, but a user rename and a title loaded from index.json are not.
+-- The host counts BYTES, so the cut has to land on a UTF-8 character boundary
+-- or the header ends in half a character (171 "€" is 513 bytes: a naive cut at
+-- 512 leaves two orphaned continuation bytes). Walk back off any continuation
+-- byte (0b10xxxxxx) before cutting; at most three steps for a 4-byte sequence.
 local CONTEXT_MENU_LABEL_MAX = 512
 
 local function menuHeaderLabel(title)
@@ -950,10 +955,21 @@ local function menuHeaderLabel(title)
   if label == "" then
     return "Chat"
   end
-  if #label > CONTEXT_MENU_LABEL_MAX then
-    return string.sub(label, 1, CONTEXT_MENU_LABEL_MAX)
+  if #label <= CONTEXT_MENU_LABEL_MAX then
+    return label
   end
-  return label
+  local cut = CONTEXT_MENU_LABEL_MAX
+  while cut > 0 do
+    local nextByte = string.byte(label, cut + 1)
+    if nextByte == nil or nextByte < 128 or nextByte >= 192 then
+      break
+    end
+    cut -= 1
+  end
+  if cut == 0 then
+    return "Chat"
+  end
+  return string.sub(label, 1, cut)
 end
 
 local function chatMenuCallback(chat)
@@ -1700,6 +1716,9 @@ function onChatMenuAction(actionId, chatId)
   if actionId == "rename" then
     renamingChatId = chat.id
     renameBuffer = chat.title
+    -- The two row states are mutually exclusive: an editor and a "delete?"
+    -- prompt on the same row is nonsense. The inline buttons predate this and
+    -- do not cross-reset; the menu is the stricter path.
     pendingDeleteChatId = nil
     render()
   elseif actionId == "terminal" then
