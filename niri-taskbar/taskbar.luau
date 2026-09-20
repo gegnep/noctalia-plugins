@@ -1201,7 +1201,24 @@ end
 -- area is the icon or button, never the indicator chrome.
 -- titlesMode: "off" | "hover" | "always" (already vertical-adjusted by
 -- render()). "hover" shows the title only on the tile under the pointer.
+-- Tooltip (plugin API 32, upstream 5d66d1188): the full, UNtruncated window
+-- title rides on the interactive LEAF only — the ui.image icon or the
+-- ui.button letter fallback. Two rules hold it there:
+--   * it is ALWAYS a string, never conditionally omitted. The reconciler does
+--     clear an empty/absent tooltip (ui_tree_reconciler.cpp:900-908, the one
+--     documented exception to footgun #1), but a prop that comes and goes is
+--     the habit that breaks the next node, so "" is passed explicitly.
+--   * it never goes on the wrapping body row, the indicator column, or the
+--     chip. Those carry no onClick/onHover, so a tooltip there would newly
+--     satisfy wantsInputAreaWrapper (:373-380) and wrap them in an InputArea,
+--     changing which node the hover dispatcher considers innermost and
+--     breaking the hoverWin_<id> group-keep-alive. The leaf is already
+--     wrapped (it has both callbacks), so adding tooltip to it flips no
+--     predicate and forces no recreation.
+-- It is ADDITIVE to window_titles: inline titles stay truncated at 12 chars,
+-- the tooltip always carries the whole thing.
 local function buildWindowTile(window, titlesMode)
+  local tooltipText = tostring(window.title or "")
   local onClick = registerWindowCallback(window)
   local iconPath = resolveWindowIcon(window.appId)
   -- Per-window hover name (registered alongside onClick above): keeps the
@@ -1232,6 +1249,7 @@ local function buildWindowTile(window, titlesMode)
       height = 22,
       onClick = onClick,
       onHover = onHoverName,
+      tooltip = tooltipText,
     })
   else
     local iconSize = settingIconSize
@@ -1244,6 +1262,7 @@ local function buildWindowTile(window, titlesMode)
       fit = "contain",
       onClick = onClick,
       onHover = onHoverName,
+      tooltip = tooltipText,
     })
 
     -- The title label is ALWAYS mounted and collapses via `visible`

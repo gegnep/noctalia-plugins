@@ -84,6 +84,8 @@ assert(icon.props.onClick == "focusWin_10", "icon onClick changed")
 assert(icon.props.onHover == "hoverWin_10", "icon onHover changed")
 assert(icon.props.width == 18 and icon.props.height == 18, "icon size mismatch")
 assert(icon.props.border == nil, "icon focus-border cue should be removed entirely")
+-- API 32 container tooltip: the icon leaf carries the full window title.
+assert(icon.props.tooltip == "Firefox", "icon tooltip should carry the window title")
 
 local dot10 = findNode(tile10, "win-10-dot")
 assert(dot10 ~= nil and dot10.type == "row", "dot should be a row")
@@ -98,6 +100,7 @@ assert(fallback.props.text == "N", "fallback text mismatch")
 assert(fallback.props.variant == "ghost", "fallback variant should always be ghost")
 assert(fallback.props.onClick == "focusWin_12", "fallback onClick changed")
 assert(fallback.props.onHover == "hoverWin_12", "fallback onHover changed")
+assert(fallback.props.tooltip == "Unknown", "fallback tooltip should carry the window title")
 assert(callsFor("firefox")[1].sizePx == 36, "rendered resolved icon should request icon_size * 2")
 assert(callsFor("org.noctalia.NoSuchApp")[1].sizePx == 36, "rendered miss should request icon_size * 2")
 
@@ -122,6 +125,11 @@ assert(titledIcon.props.path == answers.Slack, "titled icon path mismatch")
 assert(titledIcon.props.onClick == "focusWin_11", "titled icon onClick changed")
 assert(titledIcon.props.onHover == "hoverWin_11", "titled icon onHover changed")
 assert(titledIcon.props.border == nil, "titled icon focus-border cue should be removed entirely")
+-- The tooltip carries the FULL title, not truncateTitle's 12-char cut, so it
+-- stays useful exactly where the inline label gives up.
+assert(titledIcon.props.tooltip == "Slack workspace", "titled icon tooltip should not be truncated")
+assert(findNode(titled, "win-11-title").props.text == "Slack worksp…", "inline title should still truncate")
+assert(titled.props.tooltip == nil, "the titled body row must stay tooltip-free (no new InputArea wrapper)")
 assert(callsFor("Slack")[1].sizePx == 36, "titled icon should request icon_size * 2")
 
 local dot11 = findNode(tile11, "win-11-dot")
@@ -173,3 +181,29 @@ render()
 local title20c = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-20-title")
 assert(title20c ~= nil and title20c.props.visible == false, "off mode keeps the label mounted but invisible")
 hoveredWindowId = nil
+
+-- ---- tooltip is ALWAYS a string, never absent (ruling R3) ----------------
+-- A nil/missing title must still emit tooltip = "", which the reconciler
+-- routes to clearTooltip(); omitting the prop entirely is what would risk
+-- flipping wantsInputAreaWrapper on a future callback-less node.
+noctalia.appIconPath = function()
+  return "/tmp/noctalia-taskbar-firefox.svg"
+end
+windowsById = {
+  [21] = { id = 21, title = nil, appId = "firefox", workspaceId = 1, isFocused = false },
+}
+iconCache = {}
+settingWindowTitles = "off"
+HARNESS_RENDERS = {}
+render()
+local icon21 = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-21-icon")
+assert(icon21 ~= nil, "nil-title tile should still render an icon")
+assert(icon21.props.tooltip == "", "nil title must emit an empty-string tooltip, not nil")
+
+noctalia.appIconPath = nil
+iconCache = {}
+HARNESS_RENDERS = {}
+render()
+local fallback21 = findNode(HARNESS_RENDERS[#HARNESS_RENDERS], "win-21-fallback")
+assert(fallback21 ~= nil, "nil-title tile should fall back to a letter tile")
+assert(fallback21.props.tooltip == "", "nil-title fallback must emit an empty-string tooltip")
