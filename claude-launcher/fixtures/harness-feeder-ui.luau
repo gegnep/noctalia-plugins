@@ -58,5 +58,66 @@ local fableButton = findNode(HARNESS_LAST_TREE, function(node)
 end)
 assert(fableButton ~= nil, "model picker has no Fable 5.1 row")
 onToggleModelPicker()
+-- 4. A history row's title button wires onRightClick to a registered global
+--    that opens a native context menu carrying the chat id as context.
+historyIndex = { version = 1, chats = { {
+  id = "11111111-2222-3333-4444-555555555555",
+  title = "A past chat",
+  renamed = false,
+  model = "claude-sonnet-5",
+  effort = "high",
+  createdAt = 0,
+  updatedAt = 0,
+} } }
+view = "history"
+render()
 
-print("UI DRY-RUN OK  models=" .. #models)
+local chat = historyIndex.chats[1]
+local titleButton = findNode(HARNESS_LAST_TREE, function(node)
+  return node.type == "button" and node.props.key == "title-" .. chat.id
+end)
+assert(titleButton ~= nil, "history row title button not found")
+local menuName = titleButton.props.onRightClick
+assert(type(menuName) == "string" and menuName ~= "",
+  "history row title button has no onRightClick callback name")
+local menuFn = getfenv()[menuName]
+assert(type(menuFn) == "function", "onRightClick names an unregistered global: " .. menuName)
+
+HARNESS_CONTEXT_MENU = nil
+menuFn()
+local request = HARNESS_CONTEXT_MENU
+assert(type(request) == "table", "right-click did not call panel.openContextMenu")
+assert(request.onActivate == "onChatMenuAction",
+  "unexpected onActivate: " .. tostring(request.onActivate))
+assert(request.context == chat.id, "context must carry the chat id")
+assert(type(request.items) == "table" and #request.items >= 3, "menu needs at least three entries")
+
+local ids, enabledCount = {}, 0
+for _, item in ipairs(request.items) do
+  if item.id ~= nil then
+    ids[item.id] = true
+    if item.enabled ~= false then
+      enabledCount += 1
+    end
+  end
+end
+assert(ids.rename and ids.terminal and ids.delete,
+  "menu must offer rename, terminal and delete")
+assert(enabledCount >= 1, "openContextMenu raises unless one action is enabled")
+
+-- 5. Menu actions drive the EXISTING state machine: rename opens the inline
+--    editor, delete only ARMS the two-step confirm (never deletes outright).
+onChatMenuAction("rename", chat.id)
+assert(renamingChatId == chat.id, "rename action did not open the inline editor")
+assert(renameBuffer == chat.title, "rename action did not seed the rename buffer")
+renamingChatId = nil
+renameBuffer = ""
+
+onChatMenuAction("delete", chat.id)
+assert(pendingDeleteChatId == chat.id, "delete action did not arm the inline confirm")
+assert(#historyIndex.chats == 1, "delete action must not remove the chat outright")
+pendingDeleteChatId = nil
+
+onChatMenuAction("no-such-action", chat.id)
+
+print("UI DRY-RUN OK  models=" .. #models .. "  menuItems=" .. #request.items)

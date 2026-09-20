@@ -895,16 +895,22 @@ local function renameChatCallback(chat)
   return name
 end
 
+-- Shared by the row's terminal button and the right-click menu's matching
+-- entry, so the two paths can never drift.
+local function openChatInTerminal(chat)
+  local cmd = "cd " .. shellQuote(workspaceDir()) .. " && " .. claudeCommand() .. " --resume " .. shellQuote(chat.id)
+  if not noctalia.runInTerminal(cmd) then
+    noctalia.notifyError("Claude launcher", "could not open a terminal")
+  end
+end
+
 local function terminalChatCallback(chat)
   local name = "onTerminalChat_" .. chat.id:gsub("%W", "_")
   env[name] = function()
     if streaming then
       return
     end
-    local cmd = "cd " .. shellQuote(workspaceDir()) .. " && " .. claudeCommand() .. " --resume " .. shellQuote(chat.id)
-    if not noctalia.runInTerminal(cmd) then
-      noctalia.notifyError("Claude launcher", "could not open a terminal")
-    end
+    openChatInTerminal(chat)
   end
   return name
 end
@@ -919,6 +925,38 @@ local function deleteChatCallback(chat)
     end
     pendingDeleteChatId = chat.id
     render()
+  end
+  return name
+end
+
+-- Right-click accelerator for the row's inline controls (API 28). Every entry
+-- drives the SAME state transition its inline button drives: rename opens the
+-- inline editor (a native menu cannot host a text input) and delete only ARMS
+-- the two-step confirm. The menu never deletes anything outright.
+--
+-- panel.openContextMenu is only honoured from a live pointer callback and
+-- returns false otherwise (no raise), so the return value is ignored. It DOES
+-- raise when no item is enabled, which is why the streaming case bails out
+-- instead of rendering an all-disabled menu.
+local function chatMenuCallback(chat)
+  local name = "onChatMenu_" .. chat.id:gsub("%W", "_")
+  env[name] = function()
+    if streaming then
+      return
+    end
+    panel.openContextMenu({
+      items = {
+        { kind = "header", label = chat.title },
+        { id = "rename", label = "Rename" },
+        { id = "terminal", label = "Continue in terminal" },
+        { kind = "separator" },
+        { id = "delete", label = "Delete" },
+      },
+      -- One shared global plus the chat id as context: no per-item globals.
+      onActivate = "onChatMenuAction",
+      context = chat.id,
+      maxVisible = 8,
+    })
   end
   return name
 end
@@ -955,6 +993,9 @@ local function historyList(visible)
         variant = "ghost",
         flexGrow = 1,
         onClick = openChatCallback(chat),
+        -- Per-chat callback name, so the reconciler's "apply only when the
+        -- name changed" rule keeps each retained row pointed at its own chat.
+        onRightClick = chatMenuCallback(chat),
       })
     end
 
@@ -1613,6 +1654,38 @@ function onConfirmDeleteChat()
     inputRev += 1
   end
   render()
+end
+
+-- Activation target for every history-row context menu (API 28). The host
+-- calls it with (actionId, context); context is the chat id, looked up fresh
+-- because the menu can outlive the render that opened it.
+function onChatMenuAction(actionId, chatId)
+  if streaming then
+    return
+  end
+  local chat = nil
+  for _, entry in ipairs(historyIndex.chats) do
+    if entry.id == chatId then
+      chat = entry
+      break
+    end
+  end
+  if chat == nil then
+    return
+  end
+  if actionId == "rename" then
+    renamingChatId = chat.id
+    renameBuffer = chat.title
+    pendingDeleteChatId = nil
+    render()
+  elseif actionId == "terminal" then
+    openChatInTerminal(chat)
+  elseif actionId == "delete" then
+    -- Arms the inline confirm; onConfirmDeleteChat still does the deleting.
+    pendingDeleteChatId = chat.id
+    renamingChatId = nil
+    render()
+  end
 end
 
 function onCancelDeleteChat()
