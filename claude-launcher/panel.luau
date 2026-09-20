@@ -938,6 +938,24 @@ end
 -- returns false otherwise (no raise), so the return value is ignored. It DOES
 -- raise when no item is enabled, which is why the streaming case bails out
 -- instead of rendering an all-disabled menu.
+--
+-- A raise here would land in a hot pointer callback and feed the host's health
+-- breaker (5 hard errors/60s), so every string the host validates is clamped
+-- first. The host requires 1..512 bytes for a label: derived titles are capped
+-- at 60 chars, but a user rename and a title loaded from index.json are not.
+local CONTEXT_MENU_LABEL_MAX = 512
+
+local function menuHeaderLabel(title)
+  local label = noctalia.string.trim(type(title) == "string" and title or "")
+  if label == "" then
+    return "Chat"
+  end
+  if #label > CONTEXT_MENU_LABEL_MAX then
+    return string.sub(label, 1, CONTEXT_MENU_LABEL_MAX)
+  end
+  return label
+end
+
 local function chatMenuCallback(chat)
   local name = "onChatMenu_" .. chat.id:gsub("%W", "_")
   env[name] = function()
@@ -946,7 +964,7 @@ local function chatMenuCallback(chat)
     end
     panel.openContextMenu({
       items = {
-        { kind = "header", label = chat.title },
+        { kind = "header", label = menuHeaderLabel(chat.title) },
         { id = "rename", label = "Rename" },
         { id = "terminal", label = "Continue in terminal" },
         { kind = "separator" },

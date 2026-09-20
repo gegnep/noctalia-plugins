@@ -129,5 +129,30 @@ assert(#historyIndex.chats == 1, "delete action must not remove the chat outrigh
 pendingDeleteChatId = nil
 
 onChatMenuAction("no-such-action", chat.id)
+onChatMenuAction("delete", "no-such-chat")
+assert(pendingDeleteChatId == nil, "an unknown chat id must be a no-op")
+
+-- 6. Every string the host validates must be clamped: openContextMenu raises
+--    on an empty label or one over 512 bytes, and a raise in a pointer
+--    callback feeds the host's 5-errors/60s health breaker. Derived titles are
+--    capped at 60 chars, but renames and titles loaded from index.json are not.
+local function headerLabelFor(title)
+  chat.title = title
+  HARNESS_CONTEXT_MENU = nil
+  menuFn()
+  for _, item in ipairs(HARNESS_CONTEXT_MENU.items) do
+    if item.kind == "header" then
+      return item.label
+    end
+  end
+  return nil
+end
+
+local longLabel = headerLabelFor(string.rep("x", 900))
+assert(type(longLabel) == "string" and #longLabel <= 512,
+  "header label must be clamped to 512 bytes, got " .. tostring(longLabel and #longLabel))
+local emptyLabel = headerLabelFor("   ")
+assert(type(emptyLabel) == "string" and #emptyLabel >= 1,
+  "a blank title must fall back to a non-empty header label")
 
 print("UI DRY-RUN OK  models=" .. #models .. "  menuItems=" .. #request.items)
