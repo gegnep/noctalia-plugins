@@ -132,11 +132,13 @@ widget.
   are therefore sized for `font_scale = 1.0`: above 1.0 a label can
   ellipsize inside a chip that looks like it has room, and below 1.0 it
   floats in a chip that is wider than it needs. The effect grows with
-  label length, so it shows up first with `display = "name"`. The default
-  is a single character (`max_label_chars` is 1, and workspace ids are
-  numeric), where the chip is a circle whose width has the most slack, so
-  it takes a larger `font_scale` to become visible there. If you run a
-  non-default `font_scale`, raise `chip_size` to compensate.
+  label length, so it shows up first with `display = "name"`. A
+  single-character label sits in a circle, whose width has the most
+  slack, so it takes a larger `font_scale` to show there. Note that
+  `max_label_chars` does not hold every chip to one character: purely
+  numeric labels are never truncated, so workspace 12 renders two
+  characters on the capsule formula. If you run a non-default
+  `font_scale`, raise `chip_size` to compensate.
 - Window tile titles are not affected by the above: the inline title has no
   width cap of its own, and the tooltip always carries the full text.
 
