@@ -304,7 +304,7 @@ local availableModels
 local effectiveModel
 local effectiveEffort
 
--- Flags verified against claude --help 2026-07-07 (CLI v2.1.201); dedicated
+-- Flags verified against claude --help 2026-09-19 (CLI v2.1.278); dedicated
 -- workspace cwd keeps Claude's per-project state out of the user's home.
 local function buildCommand(prompt, uuid, resume)
   local cmd = claudeCommand()
@@ -538,7 +538,10 @@ local MODEL_INFO = {
   ["claude-sonnet-5"] = { label = "Sonnet", effortKind = "levels", desc = "Balanced speed and capability for everyday work" },
   ["claude-opus-5"] = { label = "Opus", effortKind = "levels", desc = "Deep reasoning for complex, open-ended work" },
   haiku = { label = "Haiku", effortKind = "toggle", desc = "Fastest responses, streams its thinking" },
-  ["claude-fable-5"] = { label = "Fable", effortKind = "levels", desc = "Most capable model for the hardest problems" },
+  ["claude-fable-5-1"] = { label = "Fable 5.1", effortKind = "levels", desc = "Most capable model for the hardest problems" },
+  -- Kept alongside 5.1: a chat locks its model once it has messages, so any
+  -- history entry recorded on 5 must still resolve to a row and stay pickable.
+  ["claude-fable-5"] = { label = "Fable 5", effortKind = "levels", desc = "Previous Fable generation, kept for chats already running on it" },
 }
 local EFFORT_LEVELS = { "low", "medium", "high", "xhigh", "max" }
 local EFFORT_LABELS = { low = "Low", medium = "Medium", high = "High", xhigh = "X-High", max = "Max" }
@@ -548,7 +551,7 @@ function modelInfo(alias)
 end
 
 function availableModels()
-  return validStringList(noctalia.getConfig("models"), { "claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5" })
+  return validStringList(noctalia.getConfig("models"), { "claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5-1", "claude-fable-5" })
 end
 
 -- Replaces the old "default" placeholder concept: there is always a concrete
@@ -892,16 +895,22 @@ local function renameChatCallback(chat)
   return name
 end
 
+-- Shared by the row's terminal button and the right-click menu's matching
+-- entry, so the two paths can never drift.
+local function openChatInTerminal(chat)
+  local cmd = "cd " .. shellQuote(workspaceDir()) .. " && " .. claudeCommand() .. " --resume " .. shellQuote(chat.id)
+  if not noctalia.runInTerminal(cmd) then
+    noctalia.notifyError("Claude launcher", "could not open a terminal")
+  end
+end
+
 local function terminalChatCallback(chat)
   local name = "onTerminalChat_" .. chat.id:gsub("%W", "_")
   env[name] = function()
     if streaming then
       return
     end
-    local cmd = "cd " .. shellQuote(workspaceDir()) .. " && " .. claudeCommand() .. " --resume " .. shellQuote(chat.id)
-    if not noctalia.runInTerminal(cmd) then
-      noctalia.notifyError("Claude launcher", "could not open a terminal")
-    end
+    openChatInTerminal(chat)
   end
   return name
 end
@@ -916,6 +925,72 @@ local function deleteChatCallback(chat)
     end
     pendingDeleteChatId = chat.id
     render()
+  end
+  return name
+end
+
+-- Right-click accelerator for the row's inline controls (API 28). Every entry
+-- lands in the same state the inline button lands in: rename opens the inline
+-- editor (a native menu cannot host a text input) and delete only ARMS the
+-- two-step confirm. The menu never deletes anything outright. It is slightly
+-- stricter than the buttons, which do not clear each other's pending state.
+--
+-- panel.openContextMenu is only honoured from a live pointer callback and
+-- returns false otherwise (no raise), so the return value is ignored. It DOES
+-- raise when no item is enabled, which is why the streaming case bails out
+-- instead of rendering an all-disabled menu.
+--
+-- A raise here would land in a hot pointer callback and feed the host's health
+-- breaker (5 hard errors/60s), so every string the host validates is clamped
+-- first. The host requires 1..512 bytes for a label: derived titles are capped
+-- at 60 chars, but a user rename and a title loaded from index.json are not.
+-- The host counts BYTES, so the cut has to land on a UTF-8 character boundary
+-- or the header ends in half a character (171 "€" is 513 bytes: a naive cut at
+-- 512 leaves two orphaned continuation bytes). Walk back off any continuation
+-- byte (0b10xxxxxx) before cutting; at most three steps for a 4-byte sequence.
+local CONTEXT_MENU_LABEL_MAX = 512
+
+local function menuHeaderLabel(title)
+  local label = noctalia.string.trim(type(title) == "string" and title or "")
+  if label == "" then
+    return "Chat"
+  end
+  if #label <= CONTEXT_MENU_LABEL_MAX then
+    return label
+  end
+  local cut = CONTEXT_MENU_LABEL_MAX
+  while cut > 0 do
+    local nextByte = string.byte(label, cut + 1)
+    if nextByte == nil or nextByte < 128 or nextByte >= 192 then
+      break
+    end
+    cut -= 1
+  end
+  if cut == 0 then
+    return "Chat"
+  end
+  return string.sub(label, 1, cut)
+end
+
+local function chatMenuCallback(chat)
+  local name = "onChatMenu_" .. chat.id:gsub("%W", "_")
+  env[name] = function()
+    if streaming then
+      return
+    end
+    panel.openContextMenu({
+      items = {
+        { kind = "header", label = menuHeaderLabel(chat.title) },
+        { id = "rename", label = "Rename" },
+        { id = "terminal", label = "Continue in terminal" },
+        { kind = "separator" },
+        { id = "delete", label = "Delete" },
+      },
+      -- One shared global plus the chat id as context: no per-item globals.
+      onActivate = "onChatMenuAction",
+      context = chat.id,
+      maxVisible = 8,
+    })
   end
   return name
 end
@@ -952,6 +1027,9 @@ local function historyList(visible)
         variant = "ghost",
         flexGrow = 1,
         onClick = openChatCallback(chat),
+        -- Per-chat callback name, so the reconciler's "apply only when the
+        -- name changed" rule keeps each retained row pointed at its own chat.
+        onRightClick = chatMenuCallback(chat),
       })
     end
 
@@ -1076,6 +1154,12 @@ local function composer()
         submitOnEnter = true,
         height = COMPOSER_BASE_HEIGHT + (composerLines - 1) * COMPOSER_LINE_HEIGHT,
         enabled = true,
+        -- API 27. Stated explicitly rather than left to the host default: the
+        -- reconciler applies frameVisible only when the prop is present, so an
+        -- omitted value would let a retained keyed input carry a stale frame.
+        -- The composer's parent column draws no surface of its own, so the
+        -- input's own frame is the only thing marking it as a text field.
+        frameVisible = true,
         onChange = "onComposerChanged",
         onSubmit = "onSubmit",
       }),
@@ -1610,6 +1694,41 @@ function onConfirmDeleteChat()
     inputRev += 1
   end
   render()
+end
+
+-- Activation target for every history-row context menu (API 28). The host
+-- calls it with (actionId, context); context is the chat id, looked up fresh
+-- because the menu can outlive the render that opened it.
+function onChatMenuAction(actionId, chatId)
+  if streaming then
+    return
+  end
+  local chat = nil
+  for _, entry in ipairs(historyIndex.chats) do
+    if entry.id == chatId then
+      chat = entry
+      break
+    end
+  end
+  if chat == nil then
+    return
+  end
+  if actionId == "rename" then
+    renamingChatId = chat.id
+    renameBuffer = chat.title
+    -- The two row states are mutually exclusive: an editor and a "delete?"
+    -- prompt on the same row is nonsense. The inline buttons predate this and
+    -- do not cross-reset; the menu is the stricter path.
+    pendingDeleteChatId = nil
+    render()
+  elseif actionId == "terminal" then
+    openChatInTerminal(chat)
+  elseif actionId == "delete" then
+    -- Arms the inline confirm; onConfirmDeleteChat still does the deleting.
+    pendingDeleteChatId = chat.id
+    renamingChatId = nil
+    render()
+  end
 end
 
 function onCancelDeleteChat()

@@ -42,6 +42,21 @@ run_transcript_fixture() {
   trap - EXIT
 }
 
+run_ui_fixture() {
+  tmp=$(mktemp --suffix=.luau)
+  trap 'rm -f "$tmp"' EXIT
+  {
+    cat "$dir/harness-prelude.luau"
+    cat "$dir/../panel.luau"
+    cat "$dir/harness-feeder-ui.luau"
+  } > "$tmp"
+  printf 'ui-tree: '
+  $LUAU "$tmp"
+  rm -f "$tmp"
+  trap - EXIT
+}
+
 run_fixture "$dir/stream-dump-partial.jsonl"
 run_fixture "$dir/stream-dump-plain.jsonl"
 run_transcript_fixture "$dir/transcript-sample.jsonl"
+run_ui_fixture

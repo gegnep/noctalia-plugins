@@ -16,7 +16,8 @@
         "sonnet": "Sonnet",
         "opus": "Opus",
         "haiku": "Haiku",
-        "fable": "Fable"
+        "fable51": "Fable 5.1",
+        "fable": "Fable 5"
       }
     },
     "models": {

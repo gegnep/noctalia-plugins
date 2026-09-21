@@ -4,6 +4,8 @@
 
 CAPTURED_ONLINE = nil
 HARNESS_LOGS = {}
+HARNESS_LAST_TREE = nil
+HARNESS_CONTEXT_MENU = nil
 
 -- Minimal JSON decoder (objects, arrays, strings, numbers, true/false/null).
 -- Covers exactly the shapes in the fixture dumps; null decodes to nil.
@@ -161,6 +163,75 @@ end
 panel = {
   render = function(tree)
     assert(type(tree) == "table" and tree.type ~= nil, "panel.render: bad tree")
+    HARNESS_LAST_TREE = tree
+  end,
+  -- API 28. The host returns false (no raise) when no live pointer callback
+  -- is active; the harness always has one, so it records and returns true.
+  --
+  -- The stub RE-IMPLEMENTS the host's validation (plugin_bindings.cpp
+  -- luau_panel_openContextMenu) rather than accepting anything, because in the
+  -- real host every one of these is a Luau argument ERROR raised inside a
+  -- pointer callback, which feeds the 5-errors/60s health breaker. A permissive
+  -- stub would let a menu that kills the plugin pass the harness.
+  openContextMenu = function(request)
+    local function exactString(value, maxBytes, what)
+      assert(type(value) == "string", "openContextMenu: " .. what .. " must be a string")
+      assert(#value >= 1 and #value <= maxBytes,
+        "openContextMenu: " .. what .. " must contain 1.." .. maxBytes .. " bytes, got " .. #value)
+    end
+
+    assert(type(request) == "table", "openContextMenu: request must be a table")
+    exactString(request.onActivate, 128, "onActivate")
+
+    if request.maxVisible ~= nil then
+      assert(type(request.maxVisible) == "number"
+        and request.maxVisible % 1 == 0
+        and request.maxVisible >= 1
+        and request.maxVisible <= 30,
+        "openContextMenu: maxVisible must be an integer between 1 and 30")
+    end
+
+    local contextType = type(request.context)
+    assert(contextType == "nil" or contextType == "string" or contextType == "number"
+      or contextType == "boolean",
+      "openContextMenu: context must be a string, number, boolean, or nil")
+
+    assert(type(request.items) == "table", "openContextMenu: items must be an array")
+    assert(#request.items >= 1 and #request.items <= 64,
+      "openContextMenu: items must contain 1..64 entries")
+
+    local seenIds = {}
+    local hasEnabledAction = false
+    for i, item in ipairs(request.items) do
+      assert(type(item) == "table", "openContextMenu: items[" .. i .. "] must be a table")
+      local kind = item.kind
+      if kind == nil then
+        kind = "item" -- the host defaults to an action
+      end
+      assert(kind == "item" or kind == "separator" or kind == "header",
+        "openContextMenu: items[" .. i .. "].kind must be 'item', 'separator', or 'header'")
+      if kind == "item" then
+        exactString(item.id, 128, "items[" .. i .. "].id")
+        exactString(item.label, 512, "items[" .. i .. "].label")
+        assert(seenIds[item.id] == nil,
+          "openContextMenu: duplicate item id '" .. tostring(item.id) .. "'")
+        seenIds[item.id] = true
+        if item.enabled ~= nil then
+          assert(type(item.enabled) == "boolean",
+            "openContextMenu: items[" .. i .. "].enabled must be a boolean")
+        end
+        -- The host defaults enabled to true for an action item.
+        if item.enabled ~= false then
+          hasEnabledAction = true
+        end
+      elseif kind == "header" then
+        exactString(item.label, 512, "items[" .. i .. "].label")
+      end
+    end
+    assert(hasEnabledAction, "openContextMenu: items must contain at least one enabled action")
+
+    HARNESS_CONTEXT_MENU = request
+    return true
   end,
   setWantsSecondTicks = function(_) end,
   getConfig = function(_) return nil end,
