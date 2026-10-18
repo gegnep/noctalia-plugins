@@ -1,15 +1,16 @@
 # noctalia-plugins
 
 These are plugins I built for my own [Noctalia](https://noctalia.dev) v5
-setup, written with the help of AI tooling. There are two: a streaming
-Claude chat panel, and a niri workspace/taskbar widget. I use both daily
-and share them here in case they help you too.
+setup, written with the help of AI tooling. There are two: a niri
+workspace/taskbar widget, and a thin Claude prompt bar that hands off to
+Claude Desktop. I use both daily and share them here in case they help you
+too.
 
 ## Table of Contents
 
 - [Plugins](#plugins)
-  - [claude-launcher](#claude-launcher)
   - [niri-taskbar](#niri-taskbar)
+  - [claude-launcher](#claude-launcher)
 - [Host Requirements](#host-requirements)
 - [Install](#install)
 - [Development](#development)
@@ -17,15 +18,6 @@ and share them here in case they help you too.
 - [License \& Disclaimer](#license--disclaimer)
 
 ## Plugins
-
-### claude-launcher
-
-A streaming chat panel for Claude, backed by your own `claude` CLI login.
-It needs no API key; usage bills against your Pro/Max subscription.
-
-![claude-launcher streaming a markdown reply](./claude-launcher/screenshots/chat.png)
-
-**[Full README](./claude-launcher)**
 
 ### niri-taskbar
 
@@ -36,21 +28,22 @@ chips expand on hover into a pill of real app-icon window tiles.
 
 **[Full README](./niri-taskbar)**
 
+### claude-launcher
+
+A one-row prompt bar with model and effort pickers. It runs the first turn
+through your own `claude` CLI login, then opens the session in Claude
+Desktop and focuses its window.
+
+![claude-launcher prompt bar with the model and effort pickers](./claude-launcher/screenshots/launcher.png)
+
+**[Full README](./claude-launcher)**
+
 ## Host Requirements
 
-Neither plugin needs a patched Noctalia anymore. Every host capability
-they use has merged upstream:
+Both plugins run on stock Noctalia v5 and refuse to load on older builds:
 
-- claude-launcher: chat-style input submit, follow-scroll, and the
-  `ui.markdown` node merged on 2026-07-30 as plugin API 21
-  ([#3327](https://github.com/noctalia-dev/noctalia/pull/3327)).
-- niri-taskbar: container `onClick`/`onHover` merged on 2026-07-21
-  ([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)).
-
-Both plugins have moved on since then, and both refuse to load on older
-builds. claude-launcher declares `plugin_api = 28` (panel context menus,
-merged 2026-09). niri-taskbar declares `plugin_api = 34` (the bar hover
-tint opt-out, Noctalia v5.3.0).
+- niri-taskbar: plugin API 34 (Noctalia v5.3.0 or newer).
+- claude-launcher: plugin API 27 or newer.
 
 ## Install
 
