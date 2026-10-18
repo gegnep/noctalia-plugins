@@ -1,11 +1,11 @@
 id = "gegnep/claude-launcher"
 name = "Claude Launcher"
-version = "0.1.0"
-plugin_api = 28
+version = "0.2.0"
+plugin_api = 27
 author = "pengeg"
 license = "MIT"
 icon = "asterisk"
-description = "Streaming chat panel for Claude, backed by the Claude Code CLI (subscription auth). Not affiliated with Anthropic."
+description = "Thin prompt launcher for Claude: runs the first turn through the Claude Code CLI, then opens the session in Claude Desktop. Not affiliated with Anthropic."
 tags = ["chat", "ai", "claude", "assistant"]
 dependencies = []
 
@@ -13,10 +13,11 @@ dependencies = []
 id = "chat"
 entry = "panel.luau"
 width = 420
-height = 560
+height = 170
 placement = "floating"
 position = "center"
 open_near_click = true
+keyboard_focus = "exclusive"
 
 [[setting]]
 key = "claude_command"
@@ -26,10 +27,10 @@ description_key = "settings.claude_command.description"
 default = "claude"
 
 [[setting]]
-key = "transcripts_dir"
+key = "folder"
 type = "folder"
-label_key = "settings.transcripts_dir.label"
-description_key = "settings.transcripts_dir.description"
+label_key = "settings.folder.label"
+description_key = "settings.folder.description"
 default = ""
 
 [[setting]]
@@ -40,11 +41,10 @@ description_key = "settings.model.description"
 default = "auto"
 options = [
   { value = "auto", label_key = "settings.model.options.auto" },
-  { value = "claude-sonnet-5", label_key = "settings.model.options.sonnet" },
-  { value = "claude-opus-5", label_key = "settings.model.options.opus" },
-  { value = "haiku", label_key = "settings.model.options.haiku" },
   { value = "claude-fable-5-1", label_key = "settings.model.options.fable51" },
-  { value = "claude-fable-5", label_key = "settings.model.options.fable" },
+  { value = "claude-opus-5-5", label_key = "settings.model.options.opus55" },
+  { value = "claude-sonnet-5-5", label_key = "settings.model.options.sonnet55" },
+  { value = "claude-haiku-5-5", label_key = "settings.model.options.haiku55" },
 ]
 
 [[setting]]
@@ -52,7 +52,7 @@ key = "models"
 type = "string_list"
 label_key = "settings.models.label"
 description_key = "settings.models.description"
-default = ["claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5-1", "claude-fable-5"]
+default = ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
 
 [[setting]]
 key = "effort"
@@ -74,4 +74,4 @@ key = "allow_tools"
 type = "bool"
 label_key = "settings.allow_tools.label"
 description_key = "settings.allow_tools.description"
-default = false
+default = true
