@@ -1,6 +1,5 @@
--- Test harness feeder: drives render() directly (no stream fixture) and
--- asserts UI-tree facts the reconciler footguns depend on — model-picker
--- contents, the history row's context-menu wiring, and composer props.
+-- Test harness feeder: drives render() and the callbacks directly (no stream
+-- fixture) and asserts the UI tree and the turn state machine around it.
 -- Concatenated after harness-prelude.luau + ../panel.luau by dry-run.sh.
 
 local function walk(node, visit)
@@ -15,9 +14,9 @@ local function walk(node, visit)
   end
 end
 
-local function findNode(tree, predicate)
+local function findNode(predicate)
   local found = nil
-  walk(tree, function(node)
+  walk(HARNESS_LAST_TREE, function(node)
     if found == nil and predicate(node) then
       found = node
     end
@@ -25,179 +24,259 @@ local function findNode(tree, predicate)
   return found
 end
 
-local function indexOf(list, value)
-  for i, item in ipairs(list) do
-    if item == value then
-      return i
-    end
-  end
-  return nil
+local function findKey(key)
+  local node = findNode(function(n)
+    return n.props.key == key
+  end)
+  assert(node ~= nil, "no node keyed " .. key)
+  return node
 end
 
--- 1. MODEL_INFO / availableModels carry Fable 5.1, ordered ahead of Fable 5,
---    without displacing the "auto" fallback model.
-local fable51 = MODEL_INFO["claude-fable-5-1"]
-assert(type(fable51) == "table", "MODEL_INFO is missing claude-fable-5-1")
-assert(fable51.label == "Fable 5.1", "unexpected Fable 5.1 label: " .. tostring(fable51.label))
-assert(fable51.effortKind == "levels", "Fable 5.1 must use level-based effort")
-assert(MODEL_INFO["claude-fable-5"] ~= nil, "claude-fable-5 must stay: chats lock their model")
+local function promptInput()
+  local node = findNode(function(n)
+    return n.type == "input" and type(n.props.key) == "string" and string.sub(n.props.key, 1, 7) == "prompt-"
+  end)
+  assert(node ~= nil, "prompt input missing")
+  return node
+end
 
+local function lastAsync()
+  return HARNESS_ASYNC[#HARNESS_ASYNC]
+end
+
+local function argvEquals(cmd, expected)
+  if type(cmd) ~= "table" or #cmd ~= #expected then
+    return false
+  end
+  for i, value in ipairs(expected) do
+    if cmd[i] ~= value then
+      return false
+    end
+  end
+  return true
+end
+
+local function registered(name)
+  return type(name) == "string" and type(getfenv()[name]) == "function"
+end
+
+local function okResult(stdout)
+  return { exitCode = 0, stdout = stdout or "", stderr = "", timedOut = false, stdoutTruncated = false, stderrTruncated = false }
+end
+
+local SUCCESS = '{"type":"result","subtype":"success","is_error":false,"result":"hi"}'
+local WORKSPACE = "~/.local/state/noctalia-claude-launcher/workspace"
+
+onOpen("")
+
+-- 1. Models: exactly the four current ids, biggest first, all on Low..Max.
+local expectedModels = { "claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5" }
+local expectedLabels = { "Fable 5.1", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5" }
 local models = availableModels()
-local i51 = indexOf(models, "claude-fable-5-1")
-local i50 = indexOf(models, "claude-fable-5")
-assert(i51 ~= nil, "availableModels() is missing claude-fable-5-1")
-assert(i50 ~= nil, "availableModels() dropped claude-fable-5")
-assert(i51 < i50, "Fable 5.1 must be offered before Fable 5")
-assert(models[1] == "claude-sonnet-5", "the auto-fallback model must stay claude-sonnet-5")
+assert(#models == 4, "default models: " .. #models)
+for i, alias in ipairs(expectedModels) do
+  assert(models[i] == alias, "model " .. i .. " is " .. tostring(models[i]))
+  assert(MODEL_INFO[alias] ~= nil and MODEL_INFO[alias].label == expectedLabels[i], "label for " .. alias)
+end
+local infoCount = 0
+for _ in pairs(MODEL_INFO) do
+  infoCount += 1
+end
+assert(infoCount == 4, "MODEL_INFO must list only the four current models, has " .. infoCount)
+assert(effectiveModel() == "claude-fable-5-1", "auto must pick the first model")
+assert(effectiveEffort() == "high", "auto effort must be high")
 
--- 2. The open model picker renders a row for Fable 5.1.
-onToggleModelPicker()
-assert(HARNESS_LAST_TREE ~= nil, "render() never called panel.render")
-local fableButton = findNode(HARNESS_LAST_TREE, function(node)
-  return node.type == "button" and node.props.text == "Fable 5.1"
-end)
-assert(fableButton ~= nil, "model picker has no Fable 5.1 row")
-onToggleModelPicker()
+-- 2. Idle tree: focused, framed composer and two selects in sync.
+local input = promptInput()
+assert(input.props.frameVisible == true, "frameVisible must be explicit")
+assert(input.props.focus == true, "the composer must request focus")
+assert(input.props.submitOnEnter == true and input.props.multiline == true, "Enter sends, Shift+Enter adds a line")
+assert(registered(input.props.onSubmit) and registered(input.props.onChange), "composer callbacks unregistered")
+assert(registered(findKey("send").props.onClick), "send callback unregistered")
+local modelSelect = findKey("model-select")
+local effortSelect = findKey("effort-select")
+assert(modelSelect.type == "select" and effortSelect.type == "select", "pickers must be ui.select")
+assert(#modelSelect.props.options == 4 and modelSelect.props.options[1] == "Fable 5.1", "model options")
+assert(modelSelect.props.selectedIndex == 0, "model selectedIndex " .. tostring(modelSelect.props.selectedIndex))
+assert(#effortSelect.props.options == 5 and effortSelect.props.options[5] == "Max", "effort options")
+assert(effortSelect.props.selectedIndex == 2, "effort selectedIndex " .. tostring(effortSelect.props.selectedIndex))
+assert(registered(modelSelect.props.onChange) and registered(effortSelect.props.onChange), "select callbacks unregistered")
+assert(findKey("composer-view").props.visible == true, "composer visible when idle")
+assert(findKey("running-view").props.visible == false, "running view hidden when idle")
+assert(findKey("error-view").props.visible == false, "error view hidden when idle")
+assert(findKey("error-login").props.visible == false and findKey("error-terminal").props.visible == false,
+  "error buttons must pass visible=false explicitly")
 
--- 3. The composer input pins its frame explicitly (the reconciler applies
---    frameVisible only when present, so it must never be omitted).
-local composerInput = findNode(HARNESS_LAST_TREE, function(node)
-  return node.type == "input" and node.props.placeholder ~= nil
-end)
-assert(composerInput ~= nil, "composer input not found in the tree")
-assert(composerInput.props.frameVisible == true,
-  "composer input must pass frameVisible explicitly, got " .. tostring(composerInput.props.frameVisible))
+-- 3. Picker callbacks take the host's 0-based index, possibly as a string.
+onModelChanged(2, "Sonnet 5.5")
+assert(effectiveModel() == "claude-sonnet-5-5", "model pick")
+assert(findKey("model-select").props.selectedIndex == 2, "model select did not follow the pick")
+onEffortChanged("4", "Max")
+assert(effectiveEffort() == "max", "effort pick")
+assert(findKey("effort-select").props.selectedIndex == 4, "effort select did not follow the pick")
 
--- 4. A history row's title button wires onRightClick to a registered global
---    that opens a native context menu carrying the chat id as context.
-historyIndex = { version = 1, chats = { {
-  id = "11111111-2222-3333-4444-555555555555",
-  title = "A past chat",
-  renamed = false,
-  model = "claude-sonnet-5",
-  effort = "high",
-  createdAt = 0,
-  updatedAt = 0,
-} } }
-view = "history"
-render()
+-- 4. Custom model list: unknown ids show raw; an override missing from the list falls back.
+HARNESS_CONFIG.models = { "claude-opus-5-5", "my-alias" }
+onModelChanged(0, "Opus 5.5")
+onModelChanged(1, "my-alias")
+assert(findKey("model-select").props.options[2] == "my-alias", "unknown ids must show their raw id")
+assert(effectiveModel() == "my-alias", "a custom alias must be pickable")
+HARNESS_CONFIG.models = nil
+assert(effectiveModel() == "claude-fable-5-1", "an override missing from the list must fall back to the first model")
+overrideModel = ""
+overrideEffort = ""
 
-local chat = historyIndex.chats[1]
-local titleButton = findNode(HARNESS_LAST_TREE, function(node)
-  return node.type == "button" and node.props.key == "title-" .. chat.id
-end)
-assert(titleButton ~= nil, "history row title button not found")
-local menuName = titleButton.props.onRightClick
-assert(type(menuName) == "string" and menuName ~= "",
-  "history row title button has no onRightClick callback name")
-local menuFn = getfenv()[menuName]
-assert(type(menuFn) == "function", "onRightClick names an unregistered global: " .. menuName)
+-- 5. Reopen re-keys the composer (focus applies once per control) and keeps the draft.
+onComposerChanged("draft text")
+local keyBefore = promptInput().props.key
+onClose()
+onOpen("")
+local reopened = promptInput()
+assert(reopened.props.key ~= keyBefore, "onOpen must re-key the composer")
+assert(reopened.props.value == "draft text", "onOpen must keep the draft")
+onComposerChanged("")
 
-HARNESS_CONTEXT_MENU = nil
-menuFn()
-local request = HARNESS_CONTEXT_MENU
-assert(type(request) == "table", "right-click did not call panel.openContextMenu")
-assert(request.onActivate == "onChatMenuAction",
-  "unexpected onActivate: " .. tostring(request.onActivate))
-assert(request.context == chat.id, "context must carry the chat id")
-assert(type(request.items) == "table" and #request.items >= 3, "menu needs at least three entries")
+-- 6. Submit: running view, one turn at a time, blank prompts ignored.
+onSubmit("   ")
+assert(phase == "idle", "a blank prompt must not start a turn")
+onSubmit("hello there")
+assert(phase == "running", "submit must start a turn")
+assert(findKey("running-view").props.visible == true, "running view visible while running")
+assert(findKey("composer-view").props.visible == false, "composer hidden while running")
+assert(findKey("running-prompt").props.text == "hello there", "the running view must echo the prompt")
+assert(findKey("stop").props.enabled == true, "stop enabled while running")
+assert(registered(findKey("stop").props.onClick), "stop callback unregistered")
+local firstCmd = HARNESS_STREAM_CMD
+onSubmit("second prompt")
+onSendClick()
+assert(HARNESS_STREAM_CMD == firstCmd, "a submit while running must be ignored")
 
--- Count by KIND, not by "has an id": a header or separator that grew an id
--- must not be mistaken for an enabled action. The prelude stub already
--- enforces the host's own validation rules, so a malformed request raises
--- before it gets here.
-local ids, enabledActions, headers = {}, 0, 0
-for _, item in ipairs(request.items) do
-  local kind = item.kind or "item"
-  if kind == "item" then
-    assert(type(item.label) == "string" and item.label ~= "",
-      "action '" .. tostring(item.id) .. "' has no label")
-    assert(ids[item.id] == nil, "duplicate action id: " .. tostring(item.id))
-    ids[item.id] = true
-    if item.enabled ~= false then
-      enabledActions += 1
-    end
-  elseif kind == "header" then
-    headers += 1
+-- 7. Elapsed seconds tick through update().
+startedAt = os.time() - 7
+update()
+local status = findKey("running-status").props.text
+assert(string.find(status, "7s", 1, true) ~= nil, "status must show elapsed seconds: " .. status)
+
+-- 8. Stop kills by session id, discards the turn, restores the prompt.
+onStop()
+assert(argvEquals(lastAsync().cmd, { "pkill", "-TERM", "-f", HARNESS_UUID }), "stop must pkill the session id")
+assert(phase == "idle", "phase after stop")
+assert(promptInput().props.value == "hello there", "stop must restore the prompt")
+assert(HARNESS_SECOND_TICKS == false, "stop must release second ticks")
+CAPTURED_ONLINE(SUCCESS)
+assert(phase == "idle", "a result after stop must be dropped")
+
+-- 9. Error result: banner with the login button, prompt restored for retry.
+onSubmit("hello there")
+CAPTURED_ONLINE('not json: wrapper noise on stderr')
+CAPTURED_ONLINE('{"type":"result","subtype":"success","is_error":true,"result":"Not logged in. Please run /login"}')
+assert(phase == "error", "an error result must not hand off")
+assert(string.find(errorText, "/login", 1, true) ~= nil, "error text must carry the CLI message")
+assert(string.find(errorText, "wrapper noise", 1, true) ~= nil, "error text must carry the stderr tail")
+assert(findKey("error-view").props.visible == true, "error view visible")
+assert(findKey("composer-view").props.visible == true, "composer visible under the error")
+assert(findKey("error-login").props.visible == true, "a /login error offers the login button")
+assert(findKey("error-terminal").props.visible == false, "no terminal resume for a CLI error")
+assert(promptInput().props.value == "hello there", "an error must restore the prompt")
+assert(registered(findKey("error-login").props.onClick) and registered(findKey("error-dismiss").props.onClick),
+  "error callbacks unregistered")
+onLoginTerminal()
+assert(HARNESS_TERMINAL[#HARNESS_TERMINAL] == "claude", "login runs the claude command in a terminal")
+onDismissError()
+assert(phase == "idle" and findKey("error-view").props.visible == false, "dismiss clears the error")
+
+-- 10. xdg-open failure keeps the panel open and offers the terminal resume.
+onSubmit("hello there")
+CAPTURED_ONLINE(SUCCESS)
+local open = lastAsync()
+assert(open.cmd[1] == "xdg-open", "a success result must run xdg-open")
+local closedBefore = HARNESS_PANEL_CLOSED
+open.cb({ exitCode = 4, stdout = "", stderr = "no handler", timedOut = false, stdoutTruncated = false, stderrTruncated = false })
+assert(phase == "error", "a failed xdg-open is an error")
+assert(HARNESS_PANEL_CLOSED == closedBefore, "a failed xdg-open must not close the panel")
+assert(findKey("error-terminal").props.visible == true, "an xdg-open failure offers Continue in terminal")
+assert(registered(findKey("error-terminal").props.onClick), "terminal resume callback unregistered")
+onResumeInTerminal()
+assert(HARNESS_TERMINAL[#HARNESS_TERMINAL] == "cd '" .. WORKSPACE .. "' && claude --resume '" .. HARNESS_UUID .. "'",
+  "terminal resume command: " .. tostring(HARNESS_TERMINAL[#HARNESS_TERMINAL]))
+onDismissError()
+
+-- 11. An error while the panel is closed surfaces as a notification.
+onSubmit("hello there")
+onClose()
+local logsBefore = #HARNESS_LOGS
+CAPTURED_ONLINE('{"type":"result","subtype":"error_during_execution","is_error":true,"result":"rate limited"}')
+local notified = false
+for i = logsBefore + 1, #HARNESS_LOGS do
+  if string.find(HARNESS_LOGS[i], "notifyError: Claude launcher", 1, true) == 1 then
+    notified = true
   end
 end
-assert(ids.rename and ids.terminal and ids.delete,
-  "menu must offer rename, terminal and delete")
-assert(enabledActions >= 1, "openContextMenu raises unless one action is enabled")
-assert(headers == 1, "the menu should name the chat exactly once")
+assert(notified, "an error with the panel closed must notify")
+onOpen("")
+onDismissError()
 
--- 5. Menu actions drive the EXISTING state machine: rename opens the inline
---    editor, delete only ARMS the two-step confirm (never deletes outright),
---    and each CLEARS the other's pending state. Dispatch the way the host
---    does, through the global named by onActivate with the request's context,
---    so a renamed callback or a wrong context is caught here.
-local activate = getfenv()[request.onActivate]
-assert(type(activate) == "function", "onActivate names an unregistered global")
+-- 12. Watchdog: a live process is left alone; a vanished one fails the turn.
+onSubmit("hello there")
+lastLineAt = os.time() - 10
+update()
+local probe = lastAsync()
+assert(argvEquals(probe.cmd, { "pgrep", "-f", HARNESS_UUID }), "the watchdog must pgrep the session id via argv")
+probe.cb(okResult("4242\n"))
+assert(phase == "running", "a live process must not fail the turn")
+lastLineAt = os.time() - 10
+update()
+probe = lastAsync()
+assert(probe.cmd[1] == "pgrep", "second probe missing")
+probe.cb({ exitCode = 1, stdout = "", stderr = "", timedOut = false, stdoutTruncated = false, stderrTruncated = false })
+assert(phase == "error" and string.find(errorText, "exited without a result", 1, true) ~= nil,
+  "a vanished process must fail the turn")
+onDismissError()
 
--- Rename while a delete is already armed: the confirm must be disarmed, or the
--- row would render an editor and a "delete?" prompt at the same time.
-pendingDeleteChatId = chat.id
-renamingChatId = nil
-renameBuffer = ""
-activate("rename", request.context)
-assert(renamingChatId == chat.id, "rename action did not open the inline editor")
-assert(renameBuffer == chat.title, "rename action did not seed the rename buffer")
-assert(pendingDeleteChatId == nil, "rename must disarm a pending delete confirm")
+-- 13. Tools off and a custom folder change the command; the workspace is only made when used.
+HARNESS_CONFIG.allow_tools = false
+HARNESS_CONFIG.folder = "  /home/u/project  "
+local mkdirsBefore = #HARNESS_MKDIRS
+onSubmit("hello there")
+assert(string.find(HARNESS_STREAM_CMD, "cd '/home/u/project' && ", 1, true) == 1, "custom folder: " .. HARNESS_STREAM_CMD)
+assert(string.find(HARNESS_STREAM_CMD, " --tools ''", 1, true) ~= nil, "allow_tools=false must disable tools")
+assert(#HARNESS_MKDIRS == mkdirsBefore, "a custom folder must not be created")
+onStop()
+HARNESS_CONFIG.allow_tools = nil
+HARNESS_CONFIG.folder = nil
 
--- Delete while a rename editor is open: the editor must close.
-activate("delete", request.context)
-assert(pendingDeleteChatId == chat.id, "delete action did not arm the inline confirm")
-assert(renamingChatId == nil, "delete must close an open rename editor")
-assert(#historyIndex.chats == 1, "delete action must not remove the chat outright")
-
--- Repeating the menu action still only ARMS it; only onConfirmDeleteChat
--- actually deletes.
-activate("delete", request.context)
-assert(#historyIndex.chats == 1, "a repeated delete action must not delete")
-pendingDeleteChatId = nil
-renamingChatId = nil
-renameBuffer = ""
-
-activate("no-such-action", request.context)
-activate("delete", "no-such-chat")
-assert(pendingDeleteChatId == nil, "an unknown chat id must be a no-op")
-
--- 6. Every string the host validates must be clamped: openContextMenu raises
---    on an empty label or one over 512 bytes, and a raise in a pointer
---    callback feeds the host's 5-errors/60s health breaker. Derived titles are
---    capped at 60 chars, but renames and titles loaded from index.json are not.
-local function headerLabelFor(title)
-  chat.title = title
-  HARNESS_CONTEXT_MENU = nil
-  menuFn()
-  for _, item in ipairs(HARNESS_CONTEXT_MENU.items) do
-    if item.kind == "header" then
-      return item.label
+-- 14. Focus polling gives up after 30 polls and never focuses another app.
+onSubmit("hello there")
+CAPTURED_ONLINE(SUCCESS)
+lastAsync().cb(okResult())
+local polls = 0
+local guard = 0
+while guard < 200 do
+  guard += 1
+  local call = lastAsync()
+  if argvEquals(call.cmd, { "niri", "msg", "--json", "windows" }) then
+    polls += 1
+    local before = #HARNESS_ASYNC
+    call.cb(okResult('[{"id":6,"app_id":"org.gnome.Nautilus","pid":333,"title":"Files"}]'))
+    if #HARNESS_ASYNC == before then
+      break
     end
+  elseif argvEquals(call.cmd, { "sleep", "0.5" }) then
+    call.cb(okResult())
+  else
+    error("unexpected call while polling: " .. tostring(call.cmd[1]))
   end
-  return nil
 end
+assert(polls == 30, "focus must poll 30 times before giving up, polled " .. polls)
 
-local longLabel = headerLabelFor(string.rep("x", 900))
-assert(type(longLabel) == "string" and #longLabel <= 512,
-  "header label must be clamped to 512 bytes, got " .. tostring(longLabel and #longLabel))
-local emptyLabel = headerLabelFor("   ")
-assert(type(emptyLabel) == "string" and #emptyLabel >= 1,
-  "a blank title must fall back to a non-empty header label")
+-- 15. Without niri there is no window polling at all.
+HARNESS_COMMANDS.niri = false
+onOpen("")
+onSubmit("hello there")
+CAPTURED_ONLINE(SUCCESS)
+local beforeClose = #HARNESS_ASYNC
+lastAsync().cb(okResult())
+assert(#HARNESS_ASYNC == beforeClose, "without niri the handoff must not poll for windows")
+HARNESS_COMMANDS.niri = true
 
--- The host counts BYTES, so a naive cut splits a multibyte character: 171 "€"
--- is 513 bytes, and cutting at 512 leaves two orphaned continuation bytes.
--- Every byte of the clamped label must belong to a complete sequence.
-local euro = "\226\130\172" -- U+20AC, 3 bytes
-local multibyteLabel = headerLabelFor(string.rep(euro, 171))
-assert(type(multibyteLabel) == "string" and #multibyteLabel <= 512,
-  "multibyte header label must be clamped to 512 bytes")
-assert(#multibyteLabel % 3 == 0,
-  "clamped label split a 3-byte character: " .. #multibyteLabel .. " bytes")
-local trailing = string.byte(multibyteLabel, #multibyteLabel)
-assert(trailing ~= nil and trailing >= 128 and trailing < 192,
-  "the clamped label should end on a continuation byte of a COMPLETE sequence")
--- And the cut must not be so eager that it throws the label away.
-assert(#multibyteLabel >= 510, "clamp discarded more than one character")
-
-print("UI DRY-RUN OK  models=" .. #models .. "  menuItems=" .. #request.items)
+print("UI DRY-RUN OK  async=" .. #HARNESS_ASYNC .. "  logs=" .. #HARNESS_LOGS)

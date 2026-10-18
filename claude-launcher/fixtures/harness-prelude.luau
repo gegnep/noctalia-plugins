@@ -1,11 +1,29 @@
 -- Test harness prelude: stubs the noctalia plugin environment so panel.luau
 -- can run under the standalone luau CLI. Concatenated with ../panel.luau and
--- harness-feeder.luau by dry-run.sh into a single chunk (locals flow through).
+-- a feeder by dry-run.sh into a single chunk (locals flow through).
 
 CAPTURED_ONLINE = nil
+HARNESS_STREAM_CMD = nil
 HARNESS_LOGS = {}
 HARNESS_LAST_TREE = nil
-HARNESS_CONTEXT_MENU = nil
+HARNESS_SECOND_TICKS = false
+HARNESS_PANEL_CLOSED = 0
+-- Every runAsync call, in order. Feeders answer a call by invoking its cb.
+HARNESS_ASYNC = {}
+HARNESS_TERMINAL = {}
+HARNESS_REMOVED = {}
+HARNESS_MKDIRS = {}
+HARNESS_CONFIG = {}
+HARNESS_COMMANDS = { niri = true }
+HARNESS_UUID = "0f0e0d0c-0b0a-4908-8706-050403020100"
+-- Files that exist before panel.luau loads. expandPath is the identity here,
+-- so statePath() is "~/.local/state/noctalia-claude-launcher". The two legacy
+-- files let the feeders assert the load-time cleanup.
+HARNESS_FILES = {
+  ["/proc/sys/kernel/random/uuid"] = HARNESS_UUID .. "\n",
+  ["~/.local/state/noctalia-claude-launcher/index.json"] = "{}",
+  ["~/.local/state/noctalia-claude-launcher/last-session"] = "old-uuid\n",
+}
 
 -- Minimal JSON decoder (objects, arrays, strings, numbers, true/false/null).
 -- Covers exactly the shapes in the fixture dumps; null decodes to nil.
@@ -160,82 +178,23 @@ for _, name in ipairs({
   ui[name] = uiCtor(name)
 end
 
+-- No openContextMenu stub: the thin launcher must not call it (left-click
+-- callbacks carry no pointer context on this host), so a call errors here.
 panel = {
   render = function(tree)
     assert(type(tree) == "table" and tree.type ~= nil, "panel.render: bad tree")
     HARNESS_LAST_TREE = tree
   end,
-  -- API 28. The host returns false (no raise) when no live pointer callback
-  -- is active; the harness always has one, so it records and returns true.
-  --
-  -- The stub RE-IMPLEMENTS the host's validation (plugin_bindings.cpp
-  -- luau_panel_openContextMenu) rather than accepting anything, because in the
-  -- real host every one of these is a Luau argument ERROR raised inside a
-  -- pointer callback, which feeds the 5-errors/60s health breaker. A permissive
-  -- stub would let a menu that kills the plugin pass the harness.
-  openContextMenu = function(request)
-    local function exactString(value, maxBytes, what)
-      assert(type(value) == "string", "openContextMenu: " .. what .. " must be a string")
-      assert(#value >= 1 and #value <= maxBytes,
-        "openContextMenu: " .. what .. " must contain 1.." .. maxBytes .. " bytes, got " .. #value)
-    end
-
-    assert(type(request) == "table", "openContextMenu: request must be a table")
-    exactString(request.onActivate, 128, "onActivate")
-
-    if request.maxVisible ~= nil then
-      assert(type(request.maxVisible) == "number"
-        and request.maxVisible % 1 == 0
-        and request.maxVisible >= 1
-        and request.maxVisible <= 30,
-        "openContextMenu: maxVisible must be an integer between 1 and 30")
-    end
-
-    local contextType = type(request.context)
-    assert(contextType == "nil" or contextType == "string" or contextType == "number"
-      or contextType == "boolean",
-      "openContextMenu: context must be a string, number, boolean, or nil")
-
-    assert(type(request.items) == "table", "openContextMenu: items must be an array")
-    assert(#request.items >= 1 and #request.items <= 64,
-      "openContextMenu: items must contain 1..64 entries")
-
-    local seenIds = {}
-    local hasEnabledAction = false
-    for i, item in ipairs(request.items) do
-      assert(type(item) == "table", "openContextMenu: items[" .. i .. "] must be a table")
-      local kind = item.kind
-      if kind == nil then
-        kind = "item" -- the host defaults to an action
-      end
-      assert(kind == "item" or kind == "separator" or kind == "header",
-        "openContextMenu: items[" .. i .. "].kind must be 'item', 'separator', or 'header'")
-      if kind == "item" then
-        exactString(item.id, 128, "items[" .. i .. "].id")
-        exactString(item.label, 512, "items[" .. i .. "].label")
-        assert(seenIds[item.id] == nil,
-          "openContextMenu: duplicate item id '" .. tostring(item.id) .. "'")
-        seenIds[item.id] = true
-        if item.enabled ~= nil then
-          assert(type(item.enabled) == "boolean",
-            "openContextMenu: items[" .. i .. "].enabled must be a boolean")
-        end
-        -- The host defaults enabled to true for an action item.
-        if item.enabled ~= false then
-          hasEnabledAction = true
-        end
-      elseif kind == "header" then
-        exactString(item.label, 512, "items[" .. i .. "].label")
-      end
-    end
-    assert(hasEnabledAction, "openContextMenu: items must contain at least one enabled action")
-
-    HARNESS_CONTEXT_MENU = request
-    return true
+  setWantsSecondTicks = function(wants)
+    HARNESS_SECOND_TICKS = wants
   end,
-  setWantsSecondTicks = function(_) end,
-  getConfig = function(_) return nil end,
-  close = function() end,
+  -- The host calls onClose after a close; mirror that.
+  close = function()
+    HARNESS_PANEL_CLOSED += 1
+    if type(onClose) == "function" then
+      onClose()
+    end
+  end,
 }
 
 noctalia = {
@@ -246,29 +205,50 @@ noctalia = {
     table.insert(HARNESS_LOGS, "notifyError: " .. tostring(title) .. ": " .. tostring(body))
   end,
   runStream = function(cmd, onLine)
+    HARNESS_STREAM_CMD = cmd
     CAPTURED_ONLINE = onLine
     return true
   end,
   runAsync = function(cmd, cb, timeoutMs)
-    return true -- watchdog pgrep never answers in the harness
+    table.insert(HARNESS_ASYNC, { cmd = cmd, cb = cb, timeoutMs = timeoutMs })
+    return true
+  end,
+  runInTerminal = function(cmd)
+    table.insert(HARNESS_TERMINAL, cmd)
+    return true
+  end,
+  commandExists = function(name)
+    return HARNESS_COMMANDS[name] == true
   end,
   readFile = function(path)
-    return nil, "harness: no filesystem"
+    local content = HARNESS_FILES[path]
+    if content == nil then
+      return nil, "harness: no such file"
+    end
+    return content
   end,
-  readFileAsync = function(path, cb)
-    -- Host contract: callback gets (contents, nil) or (nil, err) on the
-    -- runtime thread. The harness delivers synchronously.
-    cb(nil, "harness: no filesystem")
+  fileExists = function(path)
+    return HARNESS_FILES[path] ~= nil
+  end,
+  fileInfo = function(path)
+    local content = HARNESS_FILES[path]
+    if content == nil then
+      return nil, "harness: no such file"
+    end
+    return { size = #content, mtime = 0, isDir = false }
+  end,
+  removeFile = function(path)
+    table.insert(HARNESS_REMOVED, path)
+    HARNESS_FILES[path] = nil
     return true
   end,
   writeFile = function(path, contents)
+    HARNESS_FILES[path] = contents
     return true
   end,
   mkdirAll = function(path)
+    table.insert(HARNESS_MKDIRS, path)
     return true
-  end,
-  fileExists = function(path)
-    return false
   end,
   getenv = function(name)
     return nil
@@ -276,23 +256,8 @@ noctalia = {
   expandPath = function(path)
     return path
   end,
-  fileInfo = function(path)
-    return nil -- no filesystem, matches the readFile stub
-  end,
-  formatTime = function(fmt, ts)
-    return "Jan 01 00:00"
-  end,
-  copyToClipboard = function(text)
-    return true
-  end,
-  removeFile = function(path)
-    return true
-  end,
-  runInTerminal = function(cmd)
-    return true
-  end,
   getConfig = function(key)
-    return nil
+    return HARNESS_CONFIG[key]
   end,
   json = { decode = jsonDecode, encode = function(v) return "{}" end },
   string = {
