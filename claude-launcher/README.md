@@ -1,13 +1,13 @@
 # claude-launcher
 
-A streaming chat panel for [Claude](https://claude.com), backed by the
-`claude` CLI (Claude Code) running in print mode. It shells out to your own
-`claude` login, so usage bills against your Pro/Max subscription. The
-plugin never talks to the Anthropic API directly and never holds an API
-key.
+A thin prompt bar for [Claude](https://claude.com). Type a prompt, pick a
+model and effort, and press Enter. The plugin runs the first turn through
+your own `claude` CLI (Claude Code), then opens that session in Claude
+Desktop and focuses its window. Usage bills against your Pro/Max
+subscription; the plugin never talks to the Anthropic API directly and
+never holds an API key.
 
-![claude-launcher empty panel with the model pill and composer](./screenshots/empty-state.png)
-![claude-launcher streaming a markdown reply](./screenshots/chat.png)
+![claude-launcher prompt bar with the model and effort pickers](./screenshots/launcher.png)
 
 *Not affiliated with, endorsed by, or sponsored by Anthropic. Claude is a
 trademark of Anthropic PBC.*
@@ -25,49 +25,34 @@ trademark of Anthropic PBC.*
 
 ## Features
 
-- Streaming markdown responses (headings, lists, code, and more, via
-  Noctalia's markdown control)
-- Chat-style composer keybinds: Enter sends, Shift+Enter inserts a newline,
-  Ctrl+Enter also sends
-- Follow-scroll while a response grows, with a jump-to-latest pill once you
-  scroll away from the bottom
-- Claude.ai-style inline model picker, with per-model reasoning controls: a
-  level select for Sonnet, Opus, and Fable, and an extended-thinking toggle
-  for Haiku
-- Model and reasoning effort lock once a conversation starts, and restore
-  automatically when you reopen it later
-- Chat history with rename; renamed chats carry a small pencil marker
-- Right-click a history entry for a native menu with the same actions as its
-  inline buttons
-- Two-step confirm before a history entry is deleted
-- Continue any past chat in a terminal via `claude --resume`
-- Past conversations reload their transcript from disk, so history is more
-  than a title list
-- Queued send: submit while a response is still streaming, and it sends the
-  moment the current one finishes
-- Cancel a queued message, or send it immediately
-- Retry a failed message
-- Stop a response mid-stream
-- A login affordance opens a terminal for one-time `/login` when the CLI
-  reports it isn't authenticated
-- Tool use is off by default; the CLI runs with an empty tool set. An
-  opt-in setting restores the model's normal tool behavior.
+- A one-row prompt bar: a single-line input, a model dropdown and an effort
+  dropdown
+- The first turn runs through `claude -p` with a fixed session id, with a
+  live status line ("Thinking", "Writing", "Working") and elapsed seconds
+- When the first reply is done, the session opens in Claude Desktop through
+  `claude://resume?session=<id>`, with the model you picked
+- On niri, the personal Claude Desktop window takes focus once it appears,
+  including after a cold start
+- Stop discards the turn and puts the prompt back in the input
+- Errors show inline and keep the prompt, so Enter retries. A login error
+  offers a terminal for a one-time `/login`; a failed handoff offers to
+  continue the session in a terminal
 
 ## Requirements
 
-- A Noctalia v5 build with plugin API 28 or newer, i.e. one that includes
-  panel context menus (merged 2026-09). The plugin's chat UI itself landed
-  with
-  [noctalia-dev/noctalia#3327](https://github.com/noctalia-dev/noctalia/pull/3327)
-  on 2026-07-30 as API 21, but the manifest now declares `plugin_api = 28`;
-  older hosts refuse to load the plugin.
+- A Noctalia v5 build with plugin API 27 or newer. Older hosts refuse to
+  load the plugin.
 - The `claude` CLI (Claude Code), logged into a Pro/Max subscription.
-
-Auth follows whatever `claude_command` actually runs. A sandboxed or
-bwrapped `claude` wrapper works too. In that case, set the **Transcripts
-directory** setting explicitly: a sandboxed process doesn't share a home
-directory with the one Noctalia derives from. Log in interactively inside
-that same sandbox once, before first use.
+- Claude Desktop, registered as the `claude://` handler. Check with
+  `xdg-mime query default x-scheme-handler/claude`.
+- `claude_command` and Claude Desktop must use the same
+  `CLAUDE_CONFIG_DIR`. Desktop imports the session from that directory, so
+  a CLI with a different config directory writes a session Desktop cannot
+  find.
+- `xdg-open`. Portal mode is recommended (`NIXOS_XDG_OPEN_USE_PORTAL=1` on
+  NixOS); see Notes and Limitations.
+- niri, for the focus step. On other compositors everything else works and
+  you switch to Desktop yourself.
 
 ## Install
 
@@ -96,44 +81,54 @@ Bind a key to toggle the panel via IPC:
 noctalia msg panel-toggle gegnep/claude-launcher:chat
 ```
 
-In the panel: type in the composer and send. Switch model and reasoning
-effort before your first message; both lock afterward. Open History from
-the header to reload, rename, delete, or continue a past chat in a
-terminal. Right-click a history entry for the same actions in a native
-menu. Use New Chat to start fresh.
+The input has focus when the bar opens. Type a prompt and press Enter or
+the send button. A draft survives closing and reopening the bar. The
+dropdowns remember your last choice until Noctalia restarts; the settings
+pick what they start on.
 
-![claude-launcher model and reasoning picker open](./screenshots/model-picker.png)
-![claude-launcher chat history with rename, delete, and terminal actions](./screenshots/history.png)
+While the turn runs, the bar shows its status, the prompt and a Stop
+button. You can close the bar; the handoff still happens when the turn
+ends. Stop discards the turn and puts the prompt back.
+
+![claude-launcher running the first turn, with the status, prompt and Stop button](./screenshots/running.png)
 
 | Key | Action |
 |---|---|
 | Enter | Send |
-| Shift+Enter | New line |
-| Ctrl+Enter | Send |
 
 ## Settings
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `claude_command` | string | `claude` | Path or name of the claude binary (point at a wrapper to sandbox it) |
-| `transcripts_dir` | folder | *(empty)* | Claude projects dir used to reload past conversations; empty auto-derives from the workspace path (sandboxed claude wrappers must set this explicitly) |
-| `model` | select | `auto` (first in list) | Model new chats start with: `auto`, `claude-sonnet-5`, `claude-opus-5`, `haiku`, `claude-fable-5-1`, `claude-fable-5` |
-| `models` | string_list | `["claude-sonnet-5", "claude-opus-5", "haiku", "claude-fable-5-1", "claude-fable-5"]` | Model aliases offered by the in-panel switcher |
-| `effort` | select | `auto` (default/high) | Default reasoning level for new chats: `auto`, `low`, `medium`, `high`, `xhigh`, `max` |
-| `allow_tools` | bool | `false` | Off: claude runs with all tools disabled. On: claude's default tool behavior |
+| `claude_command` | string | `claude` | Path or name of the claude binary. It must use the same `CLAUDE_CONFIG_DIR` as Claude Desktop |
+| `folder` | folder | *(empty)* | Folder the session runs in. Empty uses `$XDG_STATE_HOME/noctalia-claude-launcher/workspace` (`~/.local/state/...` when unset). Desktop trusts this folder when it opens the session |
+| `model` | select | `auto` (first in list) | Model the picker starts on: `auto`, `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` |
+| `models` | string_list | `["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]` | Model ids the picker offers, in order. Ids it does not know show as the raw id |
+| `effort` | select | `auto` (High) | Effort the picker starts on: `auto`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `allow_tools` | bool | `true` | On: the first turn uses claude's normal tools and permission mode. Off: every tool is disabled |
 
 ## Notes and Limitations
 
-- Thinking text only streams for Haiku. Other models send encrypted
-  reasoning at the API level; the plugin has no visibility into it. The
-  extended-thinking toggle only affects Haiku.
-- Markdown links render underlined but aren't clickable; the markdown
-  control has no click API yet.
-- Model and effort stay fixed for the lifetime of a conversation. Start a
-  new chat to switch.
-- There is no usage or quota display. Pro/Max rate-limit windows are
-  server-side and opaque, so the plugin doesn't estimate "percent of
-  limit."
+- The first turn runs unattended. Permission prompts cannot show, so a tool
+  that needs approval is refused on that turn. Continue in Desktop to
+  approve it.
+- Desktop opens only after the first reply is complete.
+- Effort applies to the first turn only. Desktop's import carries the model
+  and permission mode from the session, not the effort.
+- `claude --desktop` refuses to run on Linux, so the plugin calls
+  `xdg-open` with the resume link itself.
+- The bar size is fixed in the manifest (640 × 66). The host has no
+  percentage size and no runtime resize for plugin panels.
+- The dropdowns are the host's standard select. Their look cannot be
+  styled further from a plugin.
+- An error shows one line in the bar. The full text, including the CLI's
+  stderr, goes to the Noctalia log.
+- Run `xdg-open` in portal mode. Noctalia gives it 10 seconds, and a
+  timeout kills its whole process group. Without the portal, that group
+  can include a Claude Desktop that `xdg-open` was starting.
+- 0.2.0 replaced the chat panel. On load it deletes the old chat history
+  files `index.json` and `last-session` from its state directory. It
+  never touches the workspace folder.
 
 ## Development
 
@@ -141,8 +136,8 @@ menu. Use New Chat to start fresh.
 nix develop   # or let direnv load it automatically
 ```
 
-The devshell provides `luau`, `jq`, `fd`, and `ripgrep`: everything the
-fixture harness needs. No running Noctalia instance is required.
+The devshell provides `luau`, `jq`, `fd`, `ripgrep` and `python3`. No
+running Noctalia instance is required.
 
 Lint the manifest and Luau sources:
 
@@ -150,24 +145,29 @@ Lint the manifest and Luau sources:
 noctalia plugins lint claude-launcher
 ```
 
-Run the fixture-driven parser tests:
+Run the fixture harness:
 
 ```sh
 ./claude-launcher/fixtures/dry-run.sh
 ```
 
-The fixture harness feeds `panel.luau`'s parser and transcript loader with
-real captured data, outside of Noctalia. Inputs are `claude
---output-format stream-json` output (with and without
-`--include-partial-messages`), plus a sample transcript file. See
-[`fixtures/parser-spec.md`](./fixtures/parser-spec.md) for the full state
-machine the parser implements.
+It ends with three OK lines: two replay real `claude --output-format
+stream-json` captures (with and without `--include-partial-messages`)
+through the parser and the Desktop handoff, and one drives the UI tree and
+the turn state machine. See
+[`fixtures/parser-spec.md`](./fixtures/parser-spec.md) for the parser
+contract.
+
+Check that every settings label in `plugin.toml` has a string in
+`translations/en.json` (prints nothing when they match):
+
+```sh
+rg -o 'settings\.[a-z0-9_.]+' claude-launcher/plugin.toml | sort -u > /tmp/toml-keys
+jq -r 'paths(scalars) | map(tostring) | join(".")' claude-launcher/translations/en.json | sort -u > /tmp/json-keys
+diff /tmp/toml-keys /tmp/json-keys
+```
 
 Everything lives in a single `panel.luau` file, with no separate service.
-Claude runs with its working directory pinned to a dedicated workspace
-under `$XDG_STATE_HOME/noctalia-claude-launcher/workspace`, not your home
-directory. When `XDG_STATE_HOME` is unset, that resolves to
-`~/.local/state/noctalia-claude-launcher/workspace`.
 
 ## License
 

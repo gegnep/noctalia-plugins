@@ -1,8 +1,9 @@
 # noctalia-plugins
 
 These are plugins I built for my own [Noctalia](https://noctalia.dev) v5
-setup, written with the help of AI tooling. There are two: a streaming
-Claude chat panel, and a niri workspace/taskbar widget. I use both daily
+setup, written with the help of AI tooling. There are two: a thin Claude
+prompt bar that hands off to Claude Desktop, and a niri workspace/taskbar
+widget. I use both daily
 and share them here in case they help you too.
 
 ## Table of Contents
@@ -20,10 +21,11 @@ and share them here in case they help you too.
 
 ### claude-launcher
 
-A streaming chat panel for Claude, backed by your own `claude` CLI login.
-It needs no API key; usage bills against your Pro/Max subscription.
+A one-row prompt bar with model and effort pickers. It runs the first turn
+through your own `claude` CLI login, then opens the session in Claude
+Desktop and focuses its window.
 
-![claude-launcher streaming a markdown reply](./claude-launcher/screenshots/chat.png)
+![claude-launcher prompt bar with the model and effort pickers](./claude-launcher/screenshots/launcher.png)
 
 **[Full README](./claude-launcher)**
 
@@ -41,16 +43,15 @@ chips expand on hover into a pill of real app-icon window tiles.
 Neither plugin needs a patched Noctalia anymore. Every host capability
 they use has merged upstream:
 
-- claude-launcher: chat-style input submit, follow-scroll, and the
-  `ui.markdown` node merged on 2026-07-30 as plugin API 21
-  ([#3327](https://github.com/noctalia-dev/noctalia/pull/3327)).
+- claude-launcher: input submit-on-Enter merged on 2026-07-30 as plugin
+  API 21 ([#3327](https://github.com/noctalia-dev/noctalia/pull/3327)).
 - niri-taskbar: container `onClick`/`onHover` merged on 2026-07-21
   ([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)).
 
 Both plugins have moved on since then, and both refuse to load on older
-builds. claude-launcher declares `plugin_api = 28` (panel context menus,
-merged 2026-09). niri-taskbar declares `plugin_api = 34` (the bar hover
-tint opt-out, Noctalia v5.3.0).
+builds. claude-launcher declares `plugin_api = 27` (`frameVisible` on
+inputs). niri-taskbar declares `plugin_api = 34` (the bar hover tint
+opt-out, Noctalia v5.3.0).
 
 ## Install
 
