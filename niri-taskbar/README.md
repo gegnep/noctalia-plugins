@@ -9,6 +9,7 @@ every window on that workspace.
 
 ![niri-taskbar default bar strip, all chips collapsed](./screenshots/bar-strip.png)
 ![niri-taskbar chip expanded on hover, showing window icon tiles](./screenshots/expanded-chip.png)
+![niri-taskbar window tile showing its full title in a native tooltip](./screenshots/tooltip.png)
 
 The widget targets niri only. It drives itself entirely off `niri msg
 --json event-stream`.
