@@ -1,16 +1,16 @@
 # noctalia-plugins
 
 These are plugins I built for my own [Noctalia](https://noctalia.dev) v5
-setup, written with the help of AI tooling. There are two: a thin Claude
-prompt bar that hands off to Claude Desktop, and a niri workspace/taskbar
-widget. I use both daily
-and share them here in case they help you too.
+setup, written with the help of AI tooling. There are two: a niri
+workspace/taskbar widget, and a thin Claude prompt bar that hands off to
+Claude Desktop. I use both daily and share them here in case they help you
+too.
 
 ## Table of Contents
 
 - [Plugins](#plugins)
-  - [claude-launcher](#claude-launcher)
   - [niri-taskbar](#niri-taskbar)
+  - [claude-launcher](#claude-launcher)
 - [Host Requirements](#host-requirements)
 - [Install](#install)
 - [Development](#development)
@@ -18,6 +18,15 @@ and share them here in case they help you too.
 - [License \& Disclaimer](#license--disclaimer)
 
 ## Plugins
+
+### niri-taskbar
+
+A bar widget that combines niri workspaces and a taskbar. Stretchable idle
+chips expand on hover into a pill of real app-icon window tiles.
+
+![niri-taskbar chip expanded on hover, showing window icon tiles](./niri-taskbar/screenshots/expanded-chip.png)
+
+**[Full README](./niri-taskbar)**
 
 ### claude-launcher
 
@@ -28,15 +37,6 @@ Desktop and focuses its window.
 ![claude-launcher prompt bar with the model and effort pickers](./claude-launcher/screenshots/launcher.png)
 
 **[Full README](./claude-launcher)**
-
-### niri-taskbar
-
-A bar widget that combines niri workspaces and a taskbar. Stretchable idle
-chips expand on hover into a pill of real app-icon window tiles.
-
-![niri-taskbar chip expanded on hover, showing window icon tiles](./niri-taskbar/screenshots/expanded-chip.png)
-
-**[Full README](./niri-taskbar)**
 
 ## Host Requirements
 
