@@ -40,6 +40,9 @@ The widget targets niri only. It drives itself entirely off `niri msg
   window count, or a bare pill with no label
 - Per-workspace hover: hovering one chip expands only that chip, not every
   chip on the bar
+- The bar's whole-widget hover tint is off for this widget, as it is for
+  the native workspaces widget. The chip and tile fills are the only hover
+  feedback.
 - Click a chip to focus its workspace. On a multi-monitor setup, this
   chains a focus-monitor call first, so cross-monitor chip clicks land
   correctly.
@@ -59,12 +62,13 @@ The widget targets niri only. It drives itself entirely off `niri msg
 ## Requirements
 
 - niri as the compositor.
-- A Noctalia v5 build at **plugin API 32 or newer** — upstream `main` from
-  2026-09-13 (commit `5d66d1188`, which extended the `tooltip` prop to
-  containers and images) or any later build. Every capability the widget
-  uses ships upstream; no local patch is needed.
+- A Noctalia v5 build at **plugin API 34 or newer**: v5.3.0 or any later
+  build. API 34 (commit `e84c90d5b`) adds the `hover_highlight` manifest
+  key that turns off the bar's hover tint. API 32 (commit `5d66d1188`)
+  extended the `tooltip` prop to containers and images. Every capability
+  the widget uses ships upstream; no local patch is needed.
 
-  The manifest declares `plugin_api = 32`. An older host reads the
+  The manifest declares `plugin_api = 34`. An older host reads the
   manifest, finds the declared floor above what it supports, and rejects
   the plugin on that compatibility check rather than loading it in a
   degraded state. If the widget does not appear in Settings, Bar, check
@@ -141,6 +145,9 @@ widget.
   `font_scale`, raise `chip_size` to compensate.
 - Window tile titles are not affected by the above: the inline title has no
   width cap of its own, and the tooltip always carries the full text.
+- Tile tooltips follow the bar's `show_tooltip` setting, bar-wide or per
+  widget (`[widget.<name>] show_tooltip = false`). Turning it off hides the
+  tooltips only; the inline `window_titles` text is unaffected.
 
 ## Development
 

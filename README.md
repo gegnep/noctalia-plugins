@@ -47,9 +47,10 @@ they use has merged upstream:
 - niri-taskbar: container `onClick`/`onHover` merged on 2026-07-21
   ([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)).
 
-claude-launcher has moved on since then: it declares `plugin_api = 28`
-(panel context menus, merged 2026-09) and refuses to load on older builds.
-niri-taskbar loads on older builds but degrades; its README documents how.
+Both plugins have moved on since then, and both refuse to load on older
+builds. claude-launcher declares `plugin_api = 28` (panel context menus,
+merged 2026-09). niri-taskbar declares `plugin_api = 34` (the bar hover
+tint opt-out, Noctalia v5.3.0).
 
 ## Install
 
