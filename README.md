@@ -40,18 +40,10 @@ Desktop and focuses its window.
 
 ## Host Requirements
 
-Neither plugin needs a patched Noctalia anymore. Every host capability
-they use has merged upstream:
+Both plugins run on stock Noctalia v5 and refuse to load on older builds:
 
-- claude-launcher: input submit-on-Enter merged on 2026-07-30 as plugin
-  API 21 ([#3327](https://github.com/noctalia-dev/noctalia/pull/3327)).
-- niri-taskbar: container `onClick`/`onHover` merged on 2026-07-21
-  ([#3470](https://github.com/noctalia-dev/noctalia/pull/3470)).
-
-Both plugins have moved on since then, and both refuse to load on older
-builds. claude-launcher declares `plugin_api = 27` (`frameVisible` on
-inputs). niri-taskbar declares `plugin_api = 34` (the bar hover tint
-opt-out, Noctalia v5.3.0).
+- niri-taskbar: plugin API 34 (Noctalia v5.3.0 or newer).
+- claude-launcher: plugin API 27 or newer.
 
 ## Install
 
