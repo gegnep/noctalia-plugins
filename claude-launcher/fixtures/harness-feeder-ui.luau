@@ -32,6 +32,17 @@ local function findKey(key)
   return node
 end
 
+-- True when a node keyed `key` sits inside the subtree keyed `ancestorKey`.
+local function within(key, ancestorKey)
+  local inside = false
+  walk(findKey(ancestorKey), function(n)
+    if n.props.key == key then
+      inside = true
+    end
+  end)
+  return inside
+end
+
 local function promptInput()
   local node = findNode(function(n)
     return n.type == "input" and type(n.props.key) == "string" and string.sub(n.props.key, 1, 7) == "prompt-"
@@ -86,11 +97,14 @@ assert(infoCount == 4, "MODEL_INFO must list only the four current models, has "
 assert(effectiveModel() == "claude-fable-5-1", "auto must pick the first model")
 assert(effectiveEffort() == "high", "auto effort must be high")
 
--- 2. Idle tree: focused, framed composer and two selects in sync.
+-- 2. Idle tree: one thin row. Focused single-line composer, two selects in sync.
+assert((HARNESS_LAST_TREE.props.padding or 0) == 0, "the host already pads the panel; the root must not add padding")
 local input = promptInput()
 assert(input.props.frameVisible == true, "frameVisible must be explicit")
 assert(input.props.focus == true, "the composer must request focus")
-assert(input.props.submitOnEnter == true and input.props.multiline == true, "Enter sends, Shift+Enter adds a line")
+assert(input.props.submitOnEnter == true and input.props.multiline == false, "single-line input, Enter sends")
+assert(input.props.controlSize == "md" and input.props.height == nil, "the input keeps the md control height")
+assert(findNode(function(n) return n.props.key == "newline-hint" end) == nil, "no Shift+Enter hint on a single line")
 assert(registered(input.props.onSubmit) and registered(input.props.onChange), "composer callbacks unregistered")
 assert(registered(findKey("send").props.onClick), "send callback unregistered")
 local modelSelect = findKey("model-select")
@@ -101,6 +115,12 @@ assert(modelSelect.props.selectedIndex == 0, "model selectedIndex " .. tostring(
 assert(#effortSelect.props.options == 5 and effortSelect.props.options[5] == "Max", "effort options")
 assert(effortSelect.props.selectedIndex == 2, "effort selectedIndex " .. tostring(effortSelect.props.selectedIndex))
 assert(registered(modelSelect.props.onChange) and registered(effortSelect.props.onChange), "select callbacks unregistered")
+assert(modelSelect.props.controlSize == "md" and effortSelect.props.controlSize == "md", "selects match the input height")
+assert(type(modelSelect.props.width) == "number" and type(effortSelect.props.width) == "number",
+  "fixed select widths keep the bar from jumping when a label changes")
+assert(within("model-select", "composer-view") and within("error-view", "composer-view"),
+  "pickers and the error share the composer row")
+assert(findKey("picker-row").props.visible == true, "pickers visible when idle")
 assert(findKey("composer-view").props.visible == true, "composer visible when idle")
 assert(findKey("running-view").props.visible == false, "running view hidden when idle")
 assert(findKey("error-view").props.visible == false, "error view hidden when idle")
@@ -127,6 +147,8 @@ overrideModel = ""
 overrideEffort = ""
 
 -- 5. Reopen re-keys the composer (focus applies once per control) and keeps the draft.
+onComposerChanged(string.rep("long draft ", 40))
+assert(promptInput().props.height == nil, "a long draft must scroll sideways, not grow the input")
 onComposerChanged("draft text")
 local keyBefore = promptInput().props.key
 onClose()
@@ -166,15 +188,25 @@ assert(HARNESS_SECOND_TICKS == false, "stop must release second ticks")
 CAPTURED_ONLINE(SUCCESS)
 assert(phase == "idle", "a result after stop must be dropped")
 
--- 9. Error result: banner with the login button, prompt restored for retry.
+-- 9. Error result: one inline line with the login button, prompt restored for retry.
 onSubmit("hello there")
 CAPTURED_ONLINE('not json: wrapper noise on stderr')
+local logsBeforeError = #HARNESS_LOGS
 CAPTURED_ONLINE('{"type":"result","subtype":"success","is_error":true,"result":"Not logged in. Please run /login"}')
 assert(phase == "error", "an error result must not hand off")
 assert(string.find(errorText, "/login", 1, true) ~= nil, "error text must carry the CLI message")
 assert(string.find(errorText, "wrapper noise", 1, true) ~= nil, "error text must carry the stderr tail")
+local loggedFull = false
+for i = logsBeforeError + 1, #HARNESS_LOGS do
+  if string.find(HARNESS_LOGS[i], "/login", 1, true) ~= nil and string.find(HARNESS_LOGS[i], "wrapper noise", 1, true) ~= nil then
+    loggedFull = true
+  end
+end
+assert(loggedFull, "the one-line banner hides the stderr tail, so the full error must be logged")
 assert(findKey("error-view").props.visible == true, "error view visible")
-assert(findKey("composer-view").props.visible == true, "composer visible under the error")
+assert(findKey("error-text").props.maxLines == 1, "the error is one line in the thin bar")
+assert(findKey("picker-row").props.visible == false, "the error takes the pickers' place")
+assert(findKey("composer-view").props.visible == true, "composer visible beside the error")
 assert(findKey("error-login").props.visible == true, "a /login error offers the login button")
 assert(findKey("error-terminal").props.visible == false, "no terminal resume for a CLI error")
 assert(promptInput().props.value == "hello there", "an error must restore the prompt")
@@ -184,6 +216,7 @@ onLoginTerminal()
 assert(HARNESS_TERMINAL[#HARNESS_TERMINAL] == "claude", "login runs the claude command in a terminal")
 onDismissError()
 assert(phase == "idle" and findKey("error-view").props.visible == false, "dismiss clears the error")
+assert(findKey("picker-row").props.visible == true, "dismiss brings the pickers back")
 
 -- 10. xdg-open failure keeps the panel open and offers the terminal resume.
 onSubmit("hello there")
