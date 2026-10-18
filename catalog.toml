@@ -4,12 +4,12 @@
 [[plugin]]
 id = "gegnep/claude-launcher"
 name = "Claude Launcher"
-version = "0.1.0"
+version = "0.2.0"
 author = "pengeg"
 license = "MIT"
 icon = "asterisk"
-description = "Streaming chat panel for Claude, backed by the Claude Code CLI (subscription auth). Not affiliated with Anthropic."
-plugin_api = 28
+description = "Thin prompt launcher for Claude: runs the first turn through the Claude Code CLI, then opens the session in Claude Desktop. Not affiliated with Anthropic."
+plugin_api = 27
 tags = ["chat", "ai", "claude", "assistant"]
 
 [[plugin]]

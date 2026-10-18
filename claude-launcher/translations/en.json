@@ -2,31 +2,30 @@
   "settings": {
     "claude_command": {
       "label": "Claude command",
-      "description": "Path or name of the claude binary (point at a wrapper to sandbox it)"
+      "description": "Path or name of the claude binary. It must use the same CLAUDE_CONFIG_DIR as Claude Desktop, or Desktop cannot find the session"
     },
-    "transcripts_dir": {
-      "label": "Transcripts directory",
-      "description": "Claude projects dir used to reload past conversations; empty auto-derives from the workspace path (sandboxed claude wrappers must set this explicitly)"
+    "folder": {
+      "label": "Working folder",
+      "description": "Folder the session runs in. Empty uses the launcher's own workspace (~/.local/state/noctalia-claude-launcher/workspace). Claude Desktop trusts this folder when it opens the session"
     },
     "model": {
       "label": "Default model",
-      "description": "Model new chats start with; custom aliases from the Models list are pickable per-chat but only via 'First in list' here",
+      "description": "Model the picker starts on. Custom ids from the Models list are reachable here only through 'First in list'",
       "options": {
         "auto": "First in list",
-        "sonnet": "Sonnet",
-        "opus": "Opus",
-        "haiku": "Haiku",
         "fable51": "Fable 5.1",
-        "fable": "Fable 5"
+        "opus55": "Opus 5.5",
+        "sonnet55": "Sonnet 5.5",
+        "haiku55": "Haiku 5.5"
       }
     },
     "models": {
       "label": "Models",
-      "description": "Model aliases offered by the in-panel switcher"
+      "description": "Model ids the picker offers, in order"
     },
     "effort": {
       "label": "Effort",
-      "description": "Default reasoning level for new chats",
+      "description": "Reasoning level the picker starts on",
       "options": {
         "auto": "Default (High)",
         "low": "Low",
@@ -38,7 +37,7 @@
     },
     "allow_tools": {
       "label": "Allow tools",
-      "description": "Off (default): claude runs with all tools disabled. On: claude's default tool behavior."
+      "description": "On (default): the first turn uses claude's normal tools and permission mode. Off: the first turn runs with every tool disabled"
     }
   }
 }
