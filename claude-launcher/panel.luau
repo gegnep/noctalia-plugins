@@ -6,14 +6,17 @@
 
 -- ── STATE ─────────────────────────────────────────────────────────────────
 
--- Composer auto-grow: base control height plus a per-extra-line increment,
--- capped so the input fits the 170 px panel.
-local COMPOSER_BASE_HEIGHT = 34
-local COMPOSER_LINE_HEIGHT = 20
-local COMPOSER_WRAP_WIDTH = 38
-local COMPOSER_MAX_LINES = 3
--- Panel width 420 minus 12 px padding on each side.
-local CONTENT_WIDTH = 396
+-- Layout of the thin bar. The manifest panel is 640 x 66; the host pads it by
+-- 14 px on every side, which leaves one 38 px row (controlSize "md") that is
+-- 612 px wide. Change these together with width/height in plugin.toml.
+local CONTENT_WIDTH = 612
+local ROW_HEIGHT = 38
+local MODEL_SELECT_WIDTH = 132
+local EFFORT_SELECT_WIDTH = 112
+-- Error row: the label shares the row with the input and up to three buttons.
+local ERROR_TEXT_WIDTH = 220
+-- Running row: the prompt shares the row with the status and the stop button.
+local RUNNING_PROMPT_WIDTH = CONTENT_WIDTH - 200
 
 -- Desktop handoff. Both Desktop instances share this app id; the work one
 -- runs with --user-data-dir=~/.config/Claude-work, which its cmdline shows.
@@ -25,7 +28,7 @@ local FOCUS_POLL_DELAY = "0.5"
 local XDG_OPEN_TIMEOUT_MS = 10000
 
 -- phase: "idle" (composer), "running" (first turn streaming), "handoff"
--- (result in, xdg-open pending), "error" (banner over the composer).
+-- (result in, xdg-open pending), "error" (one line beside the composer).
 local phase = "idle"
 local panelOpen = false
 -- uuid of the current or last turn. It is also the pkill/pgrep needle: it
@@ -54,7 +57,6 @@ local overrideEffort = ""
 local inputRev = 0
 local composerSeed = ""
 local composerBuffer = ""
-local composerLines = 1
 
 -- ── HELPERS ───────────────────────────────────────────────────────────────
 
@@ -237,101 +239,12 @@ local function buildCommand(prompt, uuid)
   return "cd " .. shellQuote(sessionFolder()) .. " && " .. cmd .. " 2>&1"
 end
 
--- Estimates the wrapped-line count of composer text: one line per newline
--- segment, plus extra lines for segments that would wrap at a rough width.
--- Coarse on purpose: it only grows and shrinks the input's height prop.
-local function estimateComposerLines(value)
-  local text = value or ""
-  local lines = 1
-  local segmentStart = 1
-  local len = #text
-  local i = 1
-  while i <= len do
-    if text:sub(i, i) == "\n" then
-      lines += 1
-      local segment = text:sub(segmentStart, i - 1)
-      lines += math.max(0, math.ceil(#segment / COMPOSER_WRAP_WIDTH) - 1)
-      segmentStart = i + 1
-    end
-    i += 1
-  end
-  local lastSegment = text:sub(segmentStart, len)
-  lines += math.max(0, math.ceil(#lastSegment / COMPOSER_WRAP_WIDTH) - 1)
-  return math.max(1, math.min(COMPOSER_MAX_LINES, lines))
-end
-
 -- ── UI ────────────────────────────────────────────────────────────────────
--- All three regions stay mounted and collapse with an explicit `visible`
--- (recreating them reads as a flash). Every conditional prop is passed both
--- ways: the reconciler never clears a prop the new tree omits.
-
-local function errorView(visible)
-  return ui.column({ key = "error-view", gap = 6, align = "stretch", visible = visible }, {
-    ui.label({
-      key = "error-text",
-      text = errorText,
-      color = "error",
-      fontSize = 12,
-      maxWidth = CONTENT_WIDTH,
-      maxLines = 2,
-    }),
-    ui.row({ key = "error-actions", gap = 6, align = "center" }, {
-      ui.button({
-        key = "error-login",
-        text = "Log in in a terminal",
-        variant = "outline",
-        visible = errorNeedsLogin,
-        onClick = "onLoginTerminal",
-      }),
-      ui.button({
-        key = "error-terminal",
-        text = "Continue in terminal",
-        variant = "outline",
-        visible = errorCanResume,
-        onClick = "onResumeInTerminal",
-      }),
-      ui.spacer({ flexGrow = 1 }),
-      ui.button({ key = "error-dismiss", glyph = "close", variant = "ghost", onClick = "onDismissError" }),
-    }),
-  })
-end
-
-local function runningView(visible)
-  return ui.column({ key = "running-view", gap = 8, align = "stretch", visible = visible }, {
-    ui.label({
-      key = "running-prompt",
-      text = sentPrompt,
-      color = "on_surface_variant",
-      fontSize = 12,
-      maxWidth = CONTENT_WIDTH,
-      maxLines = 2,
-    }),
-    ui.row({ key = "running-row", gap = 8, align = "center" }, {
-      ui.label({
-        key = "running-status",
-        text = activity .. "\226\128\166 " .. tostring(elapsedShown) .. "s",
-        color = "on_surface",
-        fontSize = 13,
-      }),
-      ui.spacer({ flexGrow = 1 }),
-      ui.button({
-        key = "stop",
-        glyph = "player-stop",
-        variant = "outline",
-        enabled = phase == "running",
-        onClick = "onStop",
-      }),
-    }),
-    ui.label({
-      key = "running-hint",
-      text = "Opens in Claude Desktop when the first reply is done",
-      color = "on_surface_variant/0.8",
-      fontSize = 11,
-      maxWidth = CONTENT_WIDTH,
-      maxLines = 1,
-    }),
-  })
-end
+-- One thin row. The host pads the panel by 14 px on every side and draws its
+-- background, so the tree adds no padding or card of its own. Both rows stay
+-- mounted and collapse with an explicit `visible` (recreating them reads as
+-- a flash). Every conditional prop is passed both ways: the reconciler never
+-- clears a prop the new tree omits.
 
 local function composerView(visible)
   local models = availableModels()
@@ -339,36 +252,37 @@ local function composerView(visible)
   for _, alias in ipairs(models) do
     table.insert(modelLabels, modelLabel(alias))
   end
-  return ui.column({ key = "composer-view", gap = 8, align = "stretch", visible = visible }, {
-    ui.row({ key = "composer-row", gap = 8, align = "center" }, {
-      ui.input({
-        key = "prompt-" .. inputRev,
-        value = composerSeed,
-        placeholder = "Ask Claude\226\128\166",
-        flexGrow = 1,
-        multiline = true,
-        submitOnEnter = true,
-        focus = true,
-        height = COMPOSER_BASE_HEIGHT + (composerLines - 1) * COMPOSER_LINE_HEIGHT,
-        enabled = true,
-        -- API 27. Stated explicitly: the reconciler applies frameVisible only
-        -- when present, so an omitted value would let a retained input keep a
-        -- stale frame.
-        frameVisible = true,
-        onChange = "onComposerChanged",
-        onSubmit = "onSubmit",
-      }),
-      ui.button({ key = "send", glyph = "send", variant = "primary", onClick = "onSendClick" }),
+  local inError = phase == "error"
+  return ui.row({ key = "composer-view", gap = 8, align = "center", height = ROW_HEIGHT, visible = visible }, {
+    ui.input({
+      key = "prompt-" .. inputRev,
+      value = composerSeed,
+      placeholder = "Ask Claude\226\128\166",
+      flexGrow = 1,
+      -- Single line: long prompts scroll sideways, Enter sends.
+      multiline = false,
+      submitOnEnter = true,
+      focus = true,
+      controlSize = "md",
+      enabled = true,
+      -- API 27. Stated explicitly: the reconciler applies frameVisible only
+      -- when present, so an omitted value would let a retained input keep a
+      -- stale frame.
+      frameVisible = true,
+      onChange = "onComposerChanged",
+      onSubmit = "onSubmit",
     }),
     -- ui.select, not a pill plus context menu: a left-click onClick carries no
     -- pointer context on this host, so panel.openContextMenu would refuse it.
-    ui.row({ key = "picker-row", gap = 8, align = "center" }, {
+    -- Fixed widths keep the input from jumping when a label changes.
+    ui.row({ key = "picker-row", gap = 8, align = "center", visible = not inError }, {
       ui.select({
         key = "model-select",
         options = modelLabels,
         selectedIndex = (indexOf(models, effectiveModel()) or 1) - 1,
         enabled = true,
-        controlSize = "sm",
+        controlSize = "md",
+        width = MODEL_SELECT_WIDTH,
         onChange = "onModelChanged",
       }),
       ui.select({
@@ -376,25 +290,95 @@ local function composerView(visible)
         options = EFFORT_LABELS,
         selectedIndex = (indexOf(EFFORT_LEVELS, effectiveEffort()) or 3) - 1,
         enabled = true,
-        controlSize = "sm",
+        controlSize = "md",
+        width = EFFORT_SELECT_WIDTH,
         onChange = "onEffortChanged",
       }),
-      ui.spacer({ flexGrow = 1 }),
+    }),
+    -- The error takes the pickers' place, so the input keeps the restored
+    -- prompt and Enter retries. Only the first line fits; failTurn logs the
+    -- whole message.
+    ui.row({ key = "error-view", gap = 6, align = "center", visible = inError }, {
       ui.label({
-        key = "newline-hint",
-        text = "Shift+Enter \194\183 new line",
-        color = "on_surface_variant",
-        fontSize = 11,
-        maxWidth = 120,
+        key = "error-text",
+        text = errorText,
+        color = "error",
+        fontSize = 13,
+        maxWidth = ERROR_TEXT_WIDTH,
         maxLines = 1,
       }),
+      ui.button({
+        key = "error-login",
+        text = "Log in",
+        tooltip = "Log in in a terminal",
+        variant = "outline",
+        controlSize = "md",
+        visible = errorNeedsLogin,
+        onClick = "onLoginTerminal",
+      }),
+      ui.button({
+        key = "error-terminal",
+        text = "Terminal",
+        tooltip = "Continue this session in a terminal",
+        variant = "outline",
+        controlSize = "md",
+        visible = errorCanResume,
+        onClick = "onResumeInTerminal",
+      }),
+      ui.button({
+        key = "error-dismiss",
+        glyph = "close",
+        tooltip = "Dismiss",
+        variant = "ghost",
+        controlSize = "md",
+        onClick = "onDismissError",
+      }),
+    }),
+    ui.button({
+      key = "send",
+      glyph = "send",
+      tooltip = "Send",
+      variant = "primary",
+      controlSize = "md",
+      width = ROW_HEIGHT,
+      onClick = "onSendClick",
+    }),
+  })
+end
+
+local function runningView(visible)
+  return ui.row({ key = "running-view", gap = 10, align = "center", height = ROW_HEIGHT, visible = visible }, {
+    ui.label({
+      key = "running-status",
+      text = activity .. "\226\128\166 " .. tostring(elapsedShown) .. "s",
+      color = "on_surface",
+      fontSize = 14,
+      maxLines = 1,
+    }),
+    ui.label({
+      key = "running-prompt",
+      text = sentPrompt,
+      color = "on_surface_variant",
+      fontSize = 14,
+      flexGrow = 1,
+      maxWidth = RUNNING_PROMPT_WIDTH,
+      maxLines = 1,
+    }),
+    ui.button({
+      key = "stop",
+      glyph = "player-stop",
+      tooltip = "Stop and discard this turn",
+      variant = "outline",
+      controlSize = "md",
+      width = ROW_HEIGHT,
+      enabled = phase == "running",
+      onClick = "onStop",
     }),
   })
 end
 
 render = function()
-  panel.render(ui.column({ flexGrow = 1, padding = 12, gap = 8, align = "stretch" }, {
-    errorView(phase == "error"),
+  panel.render(ui.column({ flexGrow = 1, gap = 0, align = "stretch", justify = "center" }, {
     runningView(phase == "running" or phase == "handoff"),
     composerView(phase == "idle" or phase == "error"),
   }))
@@ -405,13 +389,14 @@ end
 local function resetComposer(text)
   composerSeed = text
   composerBuffer = text
-  composerLines = estimateComposerLines(text)
   inputRev += 1
 end
 
--- Ends the turn as an error: banner over the composer, prompt restored so
--- Enter retries as a fresh session. A closed panel gets a notification.
+-- Ends the turn as an error: one line beside the composer, prompt restored so
+-- Enter retries as a fresh session. A closed panel gets a notification. The
+-- bar shows only the first line, so the whole message goes to the log.
 local function failTurn(message, opts)
+  noctalia.log("Claude launcher: " .. message)
   activeStreamId += 1
   phase = "error"
   errorText = message
@@ -637,13 +622,9 @@ function onSendClick()
   doSubmit(composerBuffer)
 end
 
+-- Nothing on screen depends on the draft, so a keystroke never re-renders.
 function onComposerChanged(value)
   composerBuffer = value or ""
-  local estimated = estimateComposerLines(composerBuffer)
-  if estimated ~= composerLines then
-    composerLines = estimated
-    render()
-  end
 end
 
 -- ui.select passes a 0-based index (possibly as a string) and the label.
