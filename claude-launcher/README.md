@@ -31,6 +31,8 @@ trademark of Anthropic PBC.*
   live status line ("Thinking", "Writing", "Working") and elapsed seconds
 - When the first reply is done, the session opens in Claude Desktop through
   `claude://resume?session=<id>`, with the model you picked
+- The session is titled with the prompt, cut to 60 bytes, so Desktop's
+  sidebar shows it even before you continue the session there
 - On niri, the personal Claude Desktop window takes focus once it appears,
   including after a cold start
 - Stop discards the turn and puts the prompt back in the input
