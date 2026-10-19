@@ -223,13 +223,37 @@ local function effectiveEffort()
   return "high"
 end
 
--- Flags verified against claude --help (CLI v2.1.278 and v2.1.302).
+-- Desktop titles a session only after a turn runs inside it, so a session
+-- the user only reads would keep its placeholder title. --name titles it with
+-- the prompt instead. The cap counts bytes, so the cut walks back off any
+-- continuation byte (0b10xxxxxx) to land on a UTF-8 character boundary.
+local SESSION_NAME_MAX = 60
+
+local function sessionName(prompt)
+  local name = noctalia.string.trim(prompt)
+  if #name <= SESSION_NAME_MAX then
+    return name
+  end
+  local cut = SESSION_NAME_MAX + 1
+  while cut > 1 do
+    local byte = string.byte(name, cut)
+    if byte < 0x80 or byte >= 0xC0 then
+      break
+    end
+    cut -= 1
+  end
+  return noctalia.string.trim(string.sub(name, 1, cut - 1)) .. "…"
+end
+
+-- Flags verified against claude --help (CLI v2.1.278 and v2.1.302; --name
+-- only on v2.1.302).
 -- --session-id fixes the uuid that the Desktop resume link names.
 local function buildCommand(prompt, uuid)
   local cmd = claudeCommand()
     .. " -p " .. shellQuote(prompt)
     .. " --output-format stream-json --verbose --include-partial-messages"
     .. " --session-id " .. shellQuote(uuid)
+    .. " --name " .. shellQuote(sessionName(prompt))
     .. " --model " .. shellQuote(effectiveModel())
     .. " --effort " .. shellQuote(effectiveEffort())
   -- Tools stay on unless the setting is explicitly off (the default is on).

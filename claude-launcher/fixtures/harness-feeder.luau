@@ -45,6 +45,7 @@ assert(string.find(cmd, "cd '~/.local/state/noctalia-claude-launcher/workspace' 
   "cwd or prompt wrong: " .. cmd)
 assert(has(" --output-format stream-json --verbose --include-partial-messages"), "stream flags missing: " .. cmd)
 assert(has(" --session-id '" .. HARNESS_UUID .. "'"), "missing session id: " .. cmd)
+assert(has(" --name 'count to five'"), "the prompt must name the session: " .. cmd)
 assert(has(" --model 'claude-fable-5-1'"), "default model must be Fable 5.1: " .. cmd)
 assert(has(" --effort 'high'"), "default effort must be high: " .. cmd)
 assert(not has("--tools"), "tools are allowed by default: " .. cmd)
